@@ -2,7 +2,7 @@
 
 ### COP290 A4 - DataFrameLib
 
-**Recommended build command for graders (put in README):**
+**Recommended build command for graders:**
 
 ```bash
 mkdir build && cd build
@@ -13,4 +13,4 @@ make -j$(nproc)
 ## Certain things that were ensured:
 
 - No memory leaks - ensured using valgrind. Can be checked as:
-  valgrind --leak-check=full --track-origins=yes ./build/your_binary
+  `valgrind --leak-check=full --track-origins=yes ./build/your_binary`
