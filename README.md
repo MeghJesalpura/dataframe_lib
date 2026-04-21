@@ -14,3 +14,5 @@ make -j$(nproc)
 
 - No memory leaks - ensured using valgrind. Can be checked as:
   `valgrind --leak-check=full --track-origins=yes ./build/your_binary`
+
+- Assuming expressions of the form `col("age") > 30` and fails in expressions `col("age") > lit(30)`

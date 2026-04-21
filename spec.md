@@ -17,7 +17,7 @@
 
 ## Project Structure
 
-- [ ] Define folder structure: `include/`, `src/`, `tests/`, `CMakeLists.txt`, `README.md`, `report.pdf`
+- [tick] Define folder structure: `include/`, `src/`, `tests/`, `CMakeLists.txt`, `README.md`, `report.pdf`
 - [ ] Create public headers: `EagerDataFrame.h`, `LazyDataFrame.h`, `QueryOptimizer.h`, `Expr.h`
 - [ ] Ensure all public API signatures match the assignment exactly (names, argument types, return types)
 

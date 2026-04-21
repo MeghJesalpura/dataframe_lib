@@ -1,6 +1,8 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#include <memory>
+#include <arrow/api.h>
 enum class DataType
 {
   INT32,
@@ -9,6 +11,49 @@ enum class DataType
   FLOAT64,
   STRING,
   BOOLEAN
+};
+
+enum class BinaryOp
+{
+  ADD,
+  SUB,
+  MUL,
+  DIV,
+  MOD
+};
+
+enum class UnaryOp
+{
+  ABS,
+  NOT,
+  IS_NULL,
+  IS_NOT_NULL
+};
+
+enum class RelOp
+{
+  EQ,
+  NEQ,
+  LT,
+  LTE,
+  GT,
+  GTE
+};
+
+enum class BoolOp
+{
+  AND,
+  OR
+};
+
+enum class StringOp
+{
+  LENGTH,
+  TO_UPPER,
+  TO_LOWER,
+  CONTAINS,
+  STARTS_WITH,
+  ENDS_WITH
 };
 
 // Function to convert our DataType enum to Arrow's DataType
@@ -54,7 +99,7 @@ inline DataType fromArrowType(const std::shared_ptr<arrow::DataType> &arrowType)
 }
 
 // to promote to a common type for binary operations
-inline DFType promoteTypes(DataType a, DataType b)
+inline DataType promoteTypes(DataType a, DataType b)
 {
   if (a == b)
     return a;
@@ -80,7 +125,7 @@ inline bool isNumeric(DataType dt)
 }
 
 // Function to check if two data types are compatible for operations
-inline voidassertCompatible(DataType a, DataType b)
+inline void assertCompatible(DataType a, DataType b)
 {
   if (isNumeric(a) && isNumeric(b))
     return; // Numeric types are compatible with each other
