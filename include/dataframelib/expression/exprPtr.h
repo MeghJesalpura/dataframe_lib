@@ -5,6 +5,7 @@
 class UnaryOpExpr;
 class AliasExpr;
 
+// Wrapper around shared_ptr<Expr> to allow .abs() and similar methods
 class ExprPtr
 {
 public:
@@ -34,6 +35,7 @@ public:
     return expr_->toString();
   }
 
+  // defined to convert shared pointer to ExprPtr implicitly
   template <typename T, typename = std::enable_if_t<std::is_base_of_v<Expr, T>>>
   ExprPtr(std::shared_ptr<T> expr) : expr_(std::move(expr)) {}
 

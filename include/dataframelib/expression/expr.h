@@ -14,5 +14,4 @@ public:
   virtual std::string toString() const = 0;
 };
 
-using ExprPtr = std::shared_ptr<Expr>;
 #endif

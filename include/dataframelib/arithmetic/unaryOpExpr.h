@@ -49,24 +49,9 @@ public:
   }
 };
 
-inline ExprPtr abs(ExprPtr operand)
-{
-  return std::make_shared<UnaryOpExpr>(std::move(operand), UnaryOp::ABS);
-}
-
 inline ExprPtr operator~(ExprPtr operand)
 {
   return std::make_shared<UnaryOpExpr>(std::move(operand), UnaryOp::NOT);
-}
-
-inline ExprPtr is_null(ExprPtr operand)
-{
-  return std::make_shared<UnaryOpExpr>(std::move(operand), UnaryOp::IS_NULL);
-}
-
-inline ExprPtr is_not_null(ExprPtr operand)
-{
-  return std::make_shared<UnaryOpExpr>(std::move(operand), UnaryOp::IS_NOT_NULL);
 }
 
 #endif

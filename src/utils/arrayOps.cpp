@@ -63,7 +63,6 @@ struct BinaryOpImpl
       const std::shared_ptr<arrow::Array> &r,
       BinaryOp op)
   {
-
     using Builder = typename TypeTraits<T>::BuilderType;
     using Cpp = typename TypeTraits<T>::CppType;
 
@@ -264,7 +263,6 @@ std::shared_ptr<arrow::ChunkedArray> applyStringOp(
     const std::shared_ptr<arrow::ChunkedArray> &arr,
     StringOp op, const std::string &arg)
 {
-
   auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
   arrow::StringBuilder strBuilder;
   arrow::Int32Builder intBuilder;
