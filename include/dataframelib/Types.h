@@ -60,6 +60,15 @@ enum class StringBinOp
   ENDS_WITH
 };
 
+enum class AggOp
+{
+  SUM,
+  MEAN,
+  COUNT,
+  MIN,
+  MAX
+};
+
 // Function to convert our DataType enum to Arrow's DataType
 inline std::shared_ptr<arrow::DataType> toArrowType(DataType dt)
 {

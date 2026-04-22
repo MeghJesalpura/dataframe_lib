@@ -24,6 +24,11 @@ public:
   ExprPtr contains(const std::string &substr) const;
   ExprPtr starts_with(const std::string &prefix) const;
   ExprPtr ends_with(const std::string &suffix) const;
+  ExprPtr sum() const;
+  ExprPtr mean() const;
+  ExprPtr count() const;
+  ExprPtr min() const;
+  ExprPtr max() const;
   // These make ExprPtr usable wherever Expr* is needed
   std::shared_ptr<arrow::ChunkedArray> evaluate(
       const std::shared_ptr<arrow::Table> &table) const

@@ -3,6 +3,7 @@
 #include "dataframelib/expression/aliasExpr.h"
 #include "dataframelib/operations/strUnOpExpr.h"
 #include "dataframelib/operations/strBinOpExpr.h"
+#include "dataframelib/operations/aggOpExpr.h"
 ExprPtr ExprPtr::abs() const
 {
   return ExprPtr(std::make_shared<UnaryOpExpr>(expr_, UnaryOp::ABS));
@@ -42,4 +43,24 @@ ExprPtr ExprPtr::starts_with(const std::string &prefix) const
 ExprPtr ExprPtr::ends_with(const std::string &suffix) const
 {
   return ExprPtr(std::make_shared<StringBinOpExpr>(expr_, suffix, StringBinOp::ENDS_WITH));
+}
+ExprPtr ExprPtr::sum() const
+{
+  return ExprPtr(std::make_shared<AggOpExpr>(AggOp::SUM, expr_));
+}
+ExprPtr ExprPtr::mean() const
+{
+  return ExprPtr(std::make_shared<AggOpExpr>(AggOp::MEAN, expr_));
+}
+ExprPtr ExprPtr::count() const
+{
+  return ExprPtr(std::make_shared<AggOpExpr>(AggOp::COUNT, expr_));
+}
+ExprPtr ExprPtr::min() const
+{
+  return ExprPtr(std::make_shared<AggOpExpr>(AggOp::MIN, expr_));
+}
+ExprPtr ExprPtr::max() const
+{
+  return ExprPtr(std::make_shared<AggOpExpr>(AggOp::MAX, expr_));
 }

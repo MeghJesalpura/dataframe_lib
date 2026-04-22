@@ -1,5 +1,5 @@
 #include "../../include/dataframelib/utils/arrayOps.h"
-
+#include "../../include/dataframelib/utils/opsHelper.h"
 // Generic row iterator to remove abstract out repetitive code
 template <DataType T, typename OutputBuilder, typename Func>
 std::shared_ptr<arrow::Array> applyRowwise(
@@ -55,7 +55,7 @@ std::shared_ptr<arrow::Array> applyRowwiseUnary(
   return result;
 }
 
-template <DataType T>
+template <typename T>
 struct BinaryOpImpl
 {
   std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -125,7 +125,7 @@ std::shared_ptr<arrow::ChunkedArray> applyBinaryOp(
 }
 
 // RelOp dispatch
-template <DataType T>
+template <typename T>
 struct RelOpImpl
 {
   std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -198,7 +198,7 @@ std::shared_ptr<arrow::ChunkedArray> applyBoolOp(
 }
 
 // UnaryOp
-template <DataType T>
+template <typename T>
 struct UnaryOpImpl
 {
   std::shared_ptr<arrow::ChunkedArray> operator()(

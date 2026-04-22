@@ -23,7 +23,9 @@ add_executable(my_example my_example.cc
     include/dataframelib/utils/arrayUtils.h
     include/dataframelib/utils/typeDispatch.h
     src/utils/arrayOps.cpp
-    src/utils/arrayUtils.cpp)
+    src/utils/arrayUtils.cpp
+    src/utils/opsHelper.cpp
+    include/dataframelib/utils/opsHelper.h)
 target_link_libraries(my_example PRIVATE 
 Arrow::arrow_shared
 ArrowDataset::arrow_dataset_shared

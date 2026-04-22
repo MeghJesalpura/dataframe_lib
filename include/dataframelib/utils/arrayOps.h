@@ -42,4 +42,68 @@ std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
     const std::string &arg,
     StringBinOp op);
 
+std::shared_ptr<arrow::ChunkedArray> applyAggOp(
+    const std::shared_ptr<arrow::ChunkedArray> &arr,
+    AggOp op);
 #endif
+
+template <typename T>
+struct SumImpl
+{
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::ChunkedArray> &arr)
+    {
+        auto val = computeSum<T>(arr);
+        typename TypeTraits<T>::BuilderType builder;
+        builder.Append(val);
+        std::shared_ptr<arrow::Array> result;
+        builder.Finish(&result);
+        return toChunked(result);
+    }
+};
+
+template <typename T>
+struct MeanImpl
+{
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::ChunkedArray> &arr)
+    {
+        auto val = computeMean<T>(arr);
+        typename TypeTraits<T>::BuilderType builder;
+        builder.Append(val);
+        std::shared_ptr<arrow::Array> result;
+        builder.Finish(&result);
+        return toChunked(result);
+    }
+};
+
+// MinImpl and MaxImpl follow identical pattern
+template <typename T>
+struct MinImpl
+{
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::ChunkedArray> &arr)
+    {
+        auto val = computeMin<T>(arr);
+        typename TypeTraits<T>::BuilderType builder;
+        builder.Append(val);
+        std::shared_ptr<arrow::Array> result;
+        builder.Finish(&result);
+        return toChunked(result);
+    }
+};
+
+template <typename T>
+struct MaxImpl
+{
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::ChunkedArray> &arr)
+    {
+        auto val = computeMax<T>(arr);
+        typename TypeTraits<T>::BuilderType builder;
+        builder.Append(val);
+        std::shared_ptr<arrow::Array> result;
+        builder.Finish(&result);
+        return toChunked(result);
+    }
+};
