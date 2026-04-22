@@ -34,6 +34,9 @@ public:
     return expr_->toString();
   }
 
+  template <typename T, typename = std::enable_if_t<std::is_base_of_v<Expr, T>>>
+  ExprPtr(std::shared_ptr<T> expr) : expr_(std::move(expr)) {}
+
   // Raw access — needed by DataFrame internals
   std::shared_ptr<Expr> get() const { return expr_; }
 

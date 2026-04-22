@@ -120,7 +120,6 @@ std::shared_ptr<arrow::ChunkedArray> applyBinaryOp(
     const std::shared_ptr<arrow::ChunkedArray> &right,
     DataType type, BinaryOp op)
 {
-
   auto l = flatten(left);
   auto r = flatten(right);
   return dispatchNumeric<BinaryOpImpl>(type, l, r, op);
@@ -199,7 +198,7 @@ std::shared_ptr<arrow::ChunkedArray> applyBoolOp(
   return toChunked(result);
 }
 
-// ── UnaryOp ──────────────────────────────────────────────────────────
+// UnaryOp
 template <DataType T>
 struct UnaryOpImpl
 {

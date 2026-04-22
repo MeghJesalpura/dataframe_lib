@@ -3,7 +3,7 @@
 
 #include "../Types.h"
 #include "../expression/expr.h"
-#include <arrow/compute/api.h>
+#include "../utils/arrayOps.h"
 
 class BoolOpExpr : public Expr
 {
@@ -20,21 +20,8 @@ public:
     auto leftArr = left_->evaluate(table);
     auto rightArr = right_->evaluate(table);
 
-    std::string fnName;
-    switch (op_)
-    {
-    case BoolOp::AND:
-      fnName = "and";
-      break;
-    case BoolOp::OR:
-      fnName = "or";
-      break;
-    }
-    auto result = arrow::compute::CallFunction(fnName, {leftArr, rightArr});
-    if (!result.ok())
-      throw std::runtime_error("Error applying boolean operation: " + result.status().ToString());
-
-    return result.ValueOrDie().chunked_array();
+    auto result = applyBoolOp(leftArr, rightArr, op_);
+    return result;
   }
 
   DataType resultType(const std::shared_ptr<arrow::Schema> &schema) const override

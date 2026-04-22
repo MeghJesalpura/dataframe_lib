@@ -2,7 +2,7 @@
 #define UnaryOpExpr_H
 #include "../Types.h"
 #include "../expression/expr.h"
-#include <arrow/compute/api.h>
+#include "../utils/arrayOps.h"
 class UnaryOpExpr : public Expr
 {
 private:
@@ -17,28 +17,8 @@ public:
     auto operandArr = operand_->evaluate(table);
     // Logic to perform the unary operation
 
-    // written this manner so that extension when more unary ops are added is easier
-    std::string fnName;
-    switch (op_)
-    {
-    case UnaryOp::ABS:
-      fnName = "abs";
-      break;
-    case UnaryOp::NOT:
-      fnName = "invert";
-      break;
-    case UnaryOp::IS_NULL:
-      fnName = "is_null";
-      break;
-    case UnaryOp::IS_NOT_NULL:
-      fnName = "is_valid";
-      break;
-    }
-    auto result = arrow::compute::CallFunction(fnName, {operandArr});
-    if (!result.ok())
-      throw std::runtime_error("Error applying unary operation: " + result.status().ToString());
-
-    return result.ValueOrDie().chunked_array();
+    DataType type = operand_->resultType(table->schema());
+    return applyUnaryOp(operandArr, type, op_);
   }
 
   DataType resultType(const std::shared_ptr<arrow::Schema> &schema) const override
