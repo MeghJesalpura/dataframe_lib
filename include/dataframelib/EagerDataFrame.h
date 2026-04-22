@@ -16,7 +16,8 @@ public:
 
   void write_csv(const std::string &path) const;
   void write_parquet(const std::string &path) const;
-  std::shared_ptr<arrow::Table> table() const { return table_; }
+  std::shared_ptr<arrow::Table> table() const { return table_; };
+  EagerDataFrame select(const std::vector<std::string> &colNames) const;
   void print() const;
 
 private:

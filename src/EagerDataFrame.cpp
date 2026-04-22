@@ -62,7 +62,6 @@ EagerDataFrame EagerDataFrame::from_columns(
     const std::map<std::string,
                    std::shared_ptr<arrow::ChunkedArray>> &cols)
 {
-
   std::vector<std::shared_ptr<arrow::Field>> fields;
   std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
 
@@ -120,4 +119,26 @@ void EagerDataFrame::write_parquet(const std::string &path) const
   );
   if (!status.ok())
     throw std::runtime_error("Could not write Parquet: " + status.ToString());
+}
+
+EagerDataFrame EagerDataFrame::select(const std::vector<std::string> &colNames) const
+{
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+
+  for (const auto &name : colNames)
+  {
+    // look up column by name — throws if not found
+    auto col = table_->GetColumnByName(name);
+    if (!col)
+      throw std::runtime_error("Column not found: " + name);
+
+    auto field = table_->schema()->GetFieldByName(name);
+    arrays.push_back(col);
+    fields.push_back(field);
+  }
+
+  auto schema = arrow::schema(fields);
+  auto table = arrow::Table::Make(schema, arrays);
+  return EagerDataFrame(table);
 }
