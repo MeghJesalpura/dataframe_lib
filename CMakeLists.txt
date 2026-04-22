@@ -16,7 +16,9 @@ add_executable(my_example my_example.cc
     include/dataframelib/operations/unaryOpExpr.h
     include/dataframelib/operations/relOpExpr.h
     include/dataframelib/operations/boolOpExpr.h
-    include/dataframelib/operations/stringOpExpr.h
+    include/dataframelib/operations/strBinOpExpr.h
+    include/dataframelib/operations/strUnOpExpr.h
+    include/dataframelib/operations/aggOpExpr.h
     src/expression/expr.cpp
     include/dataframelib/expression/exprPtr.h
     src/expression/exprPtr.cpp
@@ -25,7 +27,8 @@ add_executable(my_example my_example.cc
     src/utils/arrayOps.cpp
     src/utils/arrayUtils.cpp
     src/utils/opsHelper.cpp
-    include/dataframelib/utils/opsHelper.h)
+    include/dataframelib/utils/opsHelper.h
+    src/EagerDataFrame.cpp)
 target_link_libraries(my_example PRIVATE 
 Arrow::arrow_shared
 ArrowDataset::arrow_dataset_shared
