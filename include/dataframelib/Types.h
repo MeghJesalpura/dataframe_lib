@@ -46,11 +46,15 @@ enum class BoolOp
   OR
 };
 
-enum class StringOp
+enum class StringUnOp
 {
   LENGTH,
   TO_UPPER,
   TO_LOWER,
+};
+
+enum class StringBinOp
+{
   CONTAINS,
   STARTS_WITH,
   ENDS_WITH

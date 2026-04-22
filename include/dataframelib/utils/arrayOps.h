@@ -32,9 +32,14 @@ std::shared_ptr<arrow::ChunkedArray> applyUnaryOp(
     UnaryOp op);
 
 // String ops
-std::shared_ptr<arrow::ChunkedArray> applyStringOp(
+std::shared_ptr<arrow::ChunkedArray> applyStringUnOp(
     const std::shared_ptr<arrow::ChunkedArray> &arr,
-    StringOp op,
-    const std::string &arg = ""); // for contains/startsWith/endsWith
+    StringUnOp op,
+    const std::string &arg = "");
+
+std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
+    const std::shared_ptr<arrow::ChunkedArray> &left,
+    const std::string &arg,
+    StringBinOp op);
 
 #endif

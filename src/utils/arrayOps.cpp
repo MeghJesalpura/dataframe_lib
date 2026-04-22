@@ -259,9 +259,9 @@ std::shared_ptr<arrow::ChunkedArray> applyUnaryOp(
 }
 
 // StringOp
-std::shared_ptr<arrow::ChunkedArray> applyStringOp(
+std::shared_ptr<arrow::ChunkedArray> applyStringUnOp(
     const std::shared_ptr<arrow::ChunkedArray> &arr,
-    StringOp op, const std::string &arg)
+    StringUnOp op)
 {
   auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
   arrow::StringBuilder strBuilder;
@@ -274,11 +274,11 @@ std::shared_ptr<arrow::ChunkedArray> applyStringOp(
     {
       switch (op)
       {
-      case StringOp::LENGTH:
+      case StringUnOp::LENGTH:
         intBuilder.AppendNull();
         break;
-      case StringOp::TO_LOWER:
-      case StringOp::TO_UPPER:
+      case StringUnOp::TO_LOWER:
+      case StringUnOp::TO_UPPER:
         strBuilder.AppendNull();
         break;
       default:
@@ -290,26 +290,16 @@ std::shared_ptr<arrow::ChunkedArray> applyStringOp(
     std::string s(flat->Value(i));
     switch (op)
     {
-    case StringOp::LENGTH:
+    case StringUnOp::LENGTH:
       intBuilder.Append(static_cast<int32_t>(s.size()));
       break;
-    case StringOp::TO_LOWER:
+    case StringUnOp::TO_LOWER:
       std::transform(s.begin(), s.end(), s.begin(), ::tolower);
       strBuilder.Append(s);
       break;
-    case StringOp::TO_UPPER:
+    case StringUnOp::TO_UPPER:
       std::transform(s.begin(), s.end(), s.begin(), ::toupper);
       strBuilder.Append(s);
-      break;
-    case StringOp::CONTAINS:
-      boolBuilder.Append(s.find(arg) != std::string::npos);
-      break;
-    case StringOp::STARTS_WITH:
-      boolBuilder.Append(s.rfind(arg, 0) == 0);
-      break;
-    case StringOp::ENDS_WITH:
-      boolBuilder.Append(s.size() >= arg.size() &&
-                         s.compare(s.size() - arg.size(), arg.size(), arg) == 0);
       break;
     }
   }
@@ -317,16 +307,50 @@ std::shared_ptr<arrow::ChunkedArray> applyStringOp(
   std::shared_ptr<arrow::Array> result;
   switch (op)
   {
-  case StringOp::LENGTH:
+  case StringUnOp::LENGTH:
     intBuilder.Finish(&result);
     break;
-  case StringOp::TO_LOWER:
-  case StringOp::TO_UPPER:
+  case StringUnOp::TO_LOWER:
+  case StringUnOp::TO_UPPER:
     strBuilder.Finish(&result);
     break;
-  default:
-    boolBuilder.Finish(&result);
-    break;
   }
+  return toChunked(result);
+}
+
+std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
+    const std::shared_ptr<arrow::ChunkedArray> &arr,
+    const std::string &arg,
+    StringBinOp op)
+{
+  auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
+  arrow::BooleanBuilder builder; // all three ops always return boolean
+
+  for (int64_t i = 0; i < flat->length(); i++)
+  {
+    if (flat->IsNull(i))
+    {
+      builder.AppendNull();
+      continue;
+    }
+    std::string s(flat->Value(i));
+    switch (op)
+    {
+    case StringBinOp::CONTAINS:
+      builder.Append(s.find(arg) != std::string::npos);
+      break;
+    case StringBinOp::STARTS_WITH:
+      builder.Append(s.rfind(arg, 0) == 0);
+      break;
+    case StringBinOp::ENDS_WITH:
+      builder.Append(
+          s.size() >= arg.size() &&
+          s.compare(s.size() - arg.size(), arg.size(), arg) == 0);
+      break;
+    }
+  }
+
+  std::shared_ptr<arrow::Array> result;
+  builder.Finish(&result);
   return toChunked(result);
 }

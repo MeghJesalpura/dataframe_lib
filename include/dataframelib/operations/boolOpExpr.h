@@ -4,7 +4,7 @@
 #include "../Types.h"
 #include "../expression/expr.h"
 #include "../utils/arrayOps.h"
-
+#include "../expression/exprPtr.h"
 class BoolOpExpr : public Expr
 {
 private:

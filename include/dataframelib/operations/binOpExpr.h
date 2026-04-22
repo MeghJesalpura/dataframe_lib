@@ -4,6 +4,8 @@
 #include "../Types.h"
 #include "../expression/expr.h"
 #include "../utils/arrayOps.h"
+#include "../expression/exprPtr.h"
+
 class BinOpExpr : public Expr
 {
 private:

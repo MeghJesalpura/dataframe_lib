@@ -12,15 +12,18 @@ add_executable(my_example my_example.cc
     include/dataframelib/expression/colExpr.h
     include/dataframelib/expression/litExpr.h
     include/dataframelib/expression/aliasExpr.h
-    include/dataframelib/arithmetic/binOpExpr.h
-    include/dataframelib/arithmetic/unaryOpExpr.h
-    include/dataframelib/expression/expr.cpp
+    include/dataframelib/operations/binOpExpr.h
+    include/dataframelib/operations/unaryOpExpr.h
+    include/dataframelib/operations/relOpExpr.h
+    include/dataframelib/operations/boolOpExpr.h
+    include/dataframelib/operations/stringOpExpr.h
+    src/expression/expr.cpp
     include/dataframelib/expression/exprPtr.h
-    include/dataframelib/expression/exprPtr.cpp
+    src/expression/exprPtr.cpp
     include/dataframelib/utils/arrayUtils.h
     include/dataframelib/utils/typeDispatch.h
     src/utils/arrayOps.cpp
-    src/utils/typeDispatch.cpp)
+    src/utils/arrayUtils.cpp)
 target_link_libraries(my_example PRIVATE 
 Arrow::arrow_shared
 ArrowDataset::arrow_dataset_shared

@@ -18,7 +18,12 @@ public:
   ExprPtr is_null() const;
   ExprPtr is_not_null() const;
   ExprPtr alias(const std::string &name) const;
-
+  ExprPtr length() const;
+  ExprPtr to_upper() const;
+  ExprPtr to_lower() const;
+  ExprPtr contains(const std::string &substr) const;
+  ExprPtr starts_with(const std::string &prefix) const;
+  ExprPtr ends_with(const std::string &suffix) const;
   // These make ExprPtr usable wherever Expr* is needed
   std::shared_ptr<arrow::ChunkedArray> evaluate(
       const std::shared_ptr<arrow::Table> &table) const
