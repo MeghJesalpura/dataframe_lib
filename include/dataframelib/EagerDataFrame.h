@@ -3,6 +3,8 @@
 
 #include "Types.h"
 #include "expression/expr.h"
+#include "expression/exprPtr.h"
+#include <map>
 #include <memory>
 class EagerDataFrame
 {
@@ -18,6 +20,7 @@ public:
   void write_parquet(const std::string &path) const;
   std::shared_ptr<arrow::Table> table() const { return table_; };
   EagerDataFrame select(const std::vector<std::string> &colNames) const;
+  EagerDataFrame filter(const ExprPtr &predicate) const;
   void print() const;
 
 private:

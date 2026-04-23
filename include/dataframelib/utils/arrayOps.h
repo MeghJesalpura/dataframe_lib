@@ -4,6 +4,7 @@
 #include "../Types.h"
 #include "arrayUtils.h"
 #include "typeDispatch.h"
+#include "opsHelper.h"
 
 // Core numeric binary op — returns same type as input
 std::shared_ptr<arrow::ChunkedArray> applyBinaryOp(
@@ -45,9 +46,8 @@ std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
 std::shared_ptr<arrow::ChunkedArray> applyAggOp(
     const std::shared_ptr<arrow::ChunkedArray> &arr,
     AggOp op);
-#endif
 
-template <typename T>
+template <DataType T>
 struct SumImpl
 {
     std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -62,7 +62,7 @@ struct SumImpl
     }
 };
 
-template <typename T>
+template <DataType T>
 struct MeanImpl
 {
     std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -77,8 +77,7 @@ struct MeanImpl
     }
 };
 
-// MinImpl and MaxImpl follow identical pattern
-template <typename T>
+template <DataType T>
 struct MinImpl
 {
     std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -93,7 +92,7 @@ struct MinImpl
     }
 };
 
-template <typename T>
+template <DataType T>
 struct MaxImpl
 {
     std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -107,3 +106,9 @@ struct MaxImpl
         return toChunked(result);
     }
 };
+
+std::shared_ptr<arrow::ChunkedArray> applyBooleanMask(
+    const std::shared_ptr<arrow::Array> &arr,
+    const std::shared_ptr<arrow::BooleanArray> &mask,
+    DataType type);
+#endif

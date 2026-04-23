@@ -54,7 +54,7 @@ struct TypeTraits<DataType::BOOLEAN>
 
 // Runtime dispatcher — calls Func<T>{}(args) based on runtime DataType
 // allows to write one lambda and dispatch to the right typed version
-template <template <typename> class Func, typename... Args>
+template <template <DataType> class Func, typename... Args>
 auto dispatchNumeric(DataType t, Args &&...args)
 {
   switch (t)

@@ -1,9 +1,12 @@
 #include "../include/dataframelib/EagerDataFrame.h"
+#include <iostream>
 #include <arrow/csv/api.h>
 #include <arrow/io/api.h>
 #include <parquet/arrow/reader.h>
 #include <parquet/arrow/writer.h>
 #include <arrow/csv/writer.h>
+#include "../include/dataframelib/utils/arrayUtils.h"
+#include "../include/dataframelib/utils/arrayOps.h"
 // read_csv
 EagerDataFrame EagerDataFrame::read_csv(const std::string &path)
 {
@@ -88,7 +91,7 @@ void EagerDataFrame::write_csv(const std::string &path) const
   // using WriteCSV
   auto writeOptions = arrow::csv::WriteOptions::Defaults();
 
-  // converting table to batches and write each one
+  // converting table to batches and writing each one
   auto batchResult = table_->CombineChunksToBatch();
   if (!batchResult.ok())
     throw std::runtime_error("Could not combine chunks: " +
@@ -141,4 +144,64 @@ EagerDataFrame EagerDataFrame::select(const std::vector<std::string> &colNames) 
   auto schema = arrow::schema(fields);
   auto table = arrow::Table::Make(schema, arrays);
   return EagerDataFrame(table);
+}
+
+void EagerDataFrame::print() const
+{
+  auto schema = table_->schema();
+  int ncols = schema->num_fields();
+  for (int i = 0; i < ncols; i++)
+  {
+    if (i) std::cout << "\t";
+    std::cout << schema->field(i)->name();
+  }
+  std::cout << "\n";
+  for (int64_t row = 0; row < table_->num_rows(); row++)
+  {
+    for (int col = 0; col < ncols; col++)
+    {
+      if (col) std::cout << "\t";
+      auto arr = flatten(table_->column(col));
+      if (arr->IsNull(row))
+      {
+        std::cout << "null";
+      }
+      else
+      {
+        auto res = arr->GetScalar(row);
+        if (res.ok()) std::cout << res.ValueOrDie()->ToString();
+      }
+    }
+    std::cout << "\n";
+  }
+}
+
+EagerDataFrame EagerDataFrame::filter(const ExprPtr &predicate) const
+{
+  // Step 1 — evaluate predicate to get boolean mask
+  auto mask = predicate.evaluate(table_);
+
+  // Step 2 — validate that result is boolean
+  if (predicate.resultType(table_->schema()) != DataType::BOOLEAN)
+    throw std::runtime_error("filter() predicate must return a boolean expression");
+
+  // Step 3 — flatten mask since we need contiguous access
+  auto flatMask = std::static_pointer_cast<arrow::BooleanArray>(
+      flatten(mask));
+
+  // Step 4 — manually apply mask to each column
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> filteredArrays;
+
+  for (int i = 0; i < table_->num_columns(); i++)
+  {
+    auto col = table_->column(i);
+    auto flatCol = flatten(col);
+    auto filtered = applyBooleanMask(flatCol, flatMask,
+                                     fromArrowType(table_->schema()->field(i)->type()));
+    filteredArrays.push_back(filtered);
+  }
+
+  // Step 5 — build new table with same schema
+  auto newTable = arrow::Table::Make(table_->schema(), filteredArrays);
+  return EagerDataFrame(newTable);
 }

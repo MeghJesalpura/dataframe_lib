@@ -55,7 +55,7 @@ std::shared_ptr<arrow::Array> applyRowwiseUnary(
   return result;
 }
 
-template <typename T>
+template <DataType T>
 struct BinaryOpImpl
 {
   std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -125,7 +125,7 @@ std::shared_ptr<arrow::ChunkedArray> applyBinaryOp(
 }
 
 // RelOp dispatch
-template <typename T>
+template <DataType T>
 struct RelOpImpl
 {
   std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -198,7 +198,7 @@ std::shared_ptr<arrow::ChunkedArray> applyBoolOp(
 }
 
 // UnaryOp
-template <typename T>
+template <DataType T>
 struct UnaryOpImpl
 {
   std::shared_ptr<arrow::ChunkedArray> operator()(
@@ -261,7 +261,8 @@ std::shared_ptr<arrow::ChunkedArray> applyUnaryOp(
 // StringOp
 std::shared_ptr<arrow::ChunkedArray> applyStringUnOp(
     const std::shared_ptr<arrow::ChunkedArray> &arr,
-    StringUnOp op)
+    StringUnOp op,
+    const std::string &arg)
 {
   auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
   arrow::StringBuilder strBuilder;
@@ -353,4 +354,82 @@ std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
   std::shared_ptr<arrow::Array> result;
   builder.Finish(&result);
   return toChunked(result);
+}
+
+template <DataType T>
+struct MaskImpl
+{
+  std::shared_ptr<arrow::ChunkedArray> operator()(
+      const std::shared_ptr<arrow::Array> &arr,
+      const std::shared_ptr<arrow::BooleanArray> &mask)
+  {
+    using ArrType = typename TypeTraits<T>::ArrayType;
+    using Builder = typename TypeTraits<T>::BuilderType;
+
+    auto typed = std::static_pointer_cast<ArrType>(arr);
+    Builder builder;
+
+    for (int64_t i = 0; i < typed->length(); i++)
+    {
+      // skip rows where mask is null or false
+      if (mask->IsNull(i) || !mask->Value(i))
+        continue;
+      if (typed->IsNull(i))
+        builder.AppendNull();
+      else
+        builder.Append(typed->Value(i));
+    }
+
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
+  }
+};
+
+std::shared_ptr<arrow::ChunkedArray> applyBooleanMask(
+    const std::shared_ptr<arrow::Array> &arr,
+    const std::shared_ptr<arrow::BooleanArray> &mask,
+    DataType type)
+{
+
+  // String and Boolean need separate handling
+  // since dispatchNumeric only covers numeric types
+  if (type == DataType::STRING)
+  {
+    auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
+    arrow::StringBuilder builder;
+    for (int64_t i = 0; i < typed->length(); i++)
+    {
+      if (mask->IsNull(i) || !mask->Value(i))
+        continue;
+      if (typed->IsNull(i))
+        builder.AppendNull();
+      else
+        builder.Append(std::string(typed->Value(i)));
+    }
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
+  }
+
+  if (type == DataType::BOOLEAN)
+  {
+    auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
+    arrow::BooleanBuilder builder;
+    for (int64_t i = 0; i < typed->length(); i++)
+    {
+      if (mask->IsNull(i) || !mask->Value(i))
+        continue;
+      if (typed->IsNull(i))
+        builder.AppendNull();
+      else
+        builder.Append(typed->Value(i));
+    }
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
+  }
+
+  // Numeric types — dispatch via TypeTraits
+  return dispatchNumeric<MaskImpl>(type, arr, mask);
 }
