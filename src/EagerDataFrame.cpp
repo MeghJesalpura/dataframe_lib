@@ -318,3 +318,168 @@ EagerDataFrame EagerDataFrame::sort(
   auto newTable = arrow::Table::Make(table_->schema(), sortedArrays);
   return EagerDataFrame(newTable);
 }
+
+EagerDataFrame EagerDataFrame::join(const EagerDataFrame &other,
+                                    const std::vector<std::string> &onColumns, const std::string &how) const
+{
+  // joins to be implemented: inner, left, outer
+  // first write a simple inner join, then extend to other types
+  //  For inner join, we can do a hash-based approach:
+  //  1. Build a hash map from the smaller table (other) using the join keys
+  //  2. Iterate through the larger table (this), probe the hash map for matches, and build the result rows
+  //  Implementing it
+
+  std::map<std::string, std::shared_ptr<arrow::ChunkedArray>> resultColumns;
+  if (table_->num_rows() > other.table()->num_rows())
+  {
+    // swap in this case
+    return other.join(*this, onColumns, how);
+  }
+
+  std::vector<std::shared_ptr<arrow::Array>> flatCols;
+  std::vector<DataType> colTypes;
+  for (const auto &colName : onColumns)
+  {
+    auto col = table_->GetColumnByName(colName);
+    if (!col)
+      throw std::runtime_error("Join column not found: " + colName);
+    flatCols.push_back(flatten(col));
+    colTypes.push_back(fromArrowType(
+        table_->schema()->GetFieldByName(colName)->type()));
+  }
+  // Build a single string key per row — much faster than vector<string>
+  auto buildKey = [&](
+                      const std::vector<std::shared_ptr<arrow::Array>> &cols,
+                      const std::vector<DataType> &types,
+                      int64_t row) -> std::string
+  {
+    std::string key;
+    for (size_t i = 0; i < cols.size(); i++)
+    {
+      if (cols[i]->IsNull(row))
+      {
+        key += "__null__";
+      }
+      else
+      {
+        auto val = extractRowValue(cols[i], row, types[i]);
+        std::visit([&key](const auto &v)
+                   {
+                if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>)
+                    key += v;
+                else
+                    key += std::to_string(v); }, val);
+      }
+      key += '\0'; // null byte delimiter — safe since values won't contain it
+    }
+    return key;
+  };
+  // O(n) build, O(1) average lookup
+  std::unordered_map<std::string, std::vector<int64_t>> hashMap;
+  hashMap.reserve(table_->num_rows()); // pre-allocate
+
+  for (int64_t i = 0; i < table_->num_rows(); i++)
+  {
+    hashMap[buildKey(flatCols, colTypes, i)].push_back(i);
+  }
+  // Pre-flatten other table's join columns too
+  std::vector<std::shared_ptr<arrow::Array>> otherFlatCols;
+  std::vector<DataType> otherColTypes;
+  for (const auto &colName : onColumns)
+  {
+    auto col = other.table()->GetColumnByName(colName);
+    otherFlatCols.push_back(flatten(col));
+    otherColTypes.push_back(fromArrowType(
+        other.table()->schema()->GetFieldByName(colName)->type()));
+  }
+
+  std::vector<int64_t> leftIndices, rightIndices;
+  for (int64_t j = 0; j < other.table()->num_rows(); j++)
+  {
+    auto key = buildKey(otherFlatCols, otherColTypes, j);
+    auto it = hashMap.find(key); // O(1) average
+    if (it != hashMap.end())
+    {
+      for (int64_t i : it->second)
+      {
+        leftIndices.push_back(i);  // matched row from smaller table
+        rightIndices.push_back(j); // matched row from larger table
+      }
+    }
+  }
+
+  // now got to build it
+  if (how == "left" || how == "outer")
+  {
+    // For left join, we keep all rows from the left table, and add nulls for non-matching rows
+    std::vector<int64_t> unmatchedLeftIndices;
+    std::unordered_set<int64_t> matchedSet(leftIndices.begin(), leftIndices.end());
+    for (int64_t i = 0; i < table_->num_rows(); i++)
+    {
+      if (matchedSet.find(i) == matchedSet.end())
+      {
+        unmatchedLeftIndices.push_back(i);
+      }
+    }
+    for (int64_t idx : unmatchedLeftIndices)
+    {
+      leftIndices.push_back(idx);
+      rightIndices.push_back(-1); // -1 indicates no match
+    }
+  }
+  if (how == "outer")
+  {
+    // For outer join, we also keep unmatched rows from the right table
+    std::vector<int64_t> unmatchedRightIndices;
+    std::unordered_set<int64_t> matchedRightSet(rightIndices.begin(), rightIndices.end());
+    for (int64_t j = 0; j < other.table()->num_rows(); j++)
+    {
+      if (matchedRightSet.find(j) == matchedRightSet.end())
+      {
+        unmatchedRightIndices.push_back(j);
+      }
+    }
+    for (int64_t idx : unmatchedRightIndices)
+    {
+      leftIndices.push_back(-1); // -1 indicates no match
+      rightIndices.push_back(idx);
+    }
+  }
+
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> leftArrays, rightArrays;
+  for (int col = 0; col < table_->num_columns(); col++)
+  {
+    auto colType = fromArrowType(table_->schema()->field(col)->type());
+    auto flatCol = flatten(table_->column(col));
+    leftArrays.push_back(reorderByIndices(flatCol, leftIndices, colType));
+  }
+  for (int col = 0; col < other.table()->num_columns(); col++)
+  {
+    auto colType = fromArrowType(other.table()->schema()->field(col)->type());
+    auto flatCol = flatten(other.table()->column(col));
+    rightArrays.push_back(reorderByIndices(flatCol, rightIndices, colType));
+  }
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> allArrays;
+  allArrays.reserve(leftArrays.size() + rightArrays.size());
+  allArrays.insert(allArrays.end(), leftArrays.begin(), leftArrays.end());
+  allArrays.insert(allArrays.end(), rightArrays.begin(), rightArrays.end());
+
+  std::vector<std::shared_ptr<arrow::Field>> allFields;
+  for (int i = 0; i < table_->num_columns(); i++)
+  {
+    allFields.push_back(table_->schema()->field(i));
+  }
+  for (int i = 0; i < other.table()->num_columns(); i++)
+  {
+    auto fieldName = other.table()->schema()->field(i)->name();
+    if (onColumns.end() != std::find(onColumns.begin(), onColumns.end(), fieldName))
+      continue; // skip join keys from right table to avoid duplicates
+    if (table_->schema()->GetFieldByName(fieldName))
+      fieldName += "_right"; // if same name replacing with suffix
+    allFields.push_back(arrow::field(fieldName, other.table()->schema()->field(i)->type()));
+  }
+
+  auto newSchema = arrow::schema(allFields);
+  auto newTable = arrow::Table::Make(newSchema, allArrays);
+  return EagerDataFrame(newTable);
+}

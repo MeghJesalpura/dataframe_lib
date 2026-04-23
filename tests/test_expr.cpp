@@ -81,4 +81,20 @@ int main()
   std::cout << "=== sort by age desc, then salary asc ===\n";
   df.sort({"age"}, /*ascending=*/false).print();
   df.sort({"salary"}, /*ascending=*/true).print();
+
+  // Test 9 - join
+  std::cout << "=== join with another table ===\n";
+  arrow::Int32Builder ageBuilder2;
+  ageBuilder2.AppendValues({25, 28, 35});
+  std::shared_ptr<arrow::Array> ageArr2;
+  ageBuilder2.Finish(&ageArr2);
+  arrow::StringBuilder deptBuilder;
+  deptBuilder.AppendValues({"HR", "Engineering", "Sales"});
+  std::shared_ptr<arrow::Array> deptArr;
+  deptBuilder.Finish(&deptArr);
+  std::map<std::string, std::shared_ptr<arrow::ChunkedArray>> columns2 = {
+      {"age", std::make_shared<arrow::ChunkedArray>(ageArr2)},
+      {"department", std::make_shared<arrow::ChunkedArray>(deptArr)}};
+  auto df2 = EagerDataFrame::from_columns(columns2);
+  df.join(df2, {"age"}, "left").print();
 }

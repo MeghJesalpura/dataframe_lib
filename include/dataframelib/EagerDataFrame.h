@@ -28,6 +28,9 @@ public:
   EagerDataFrame head(size_t n) const;
   GroupByObj group_by(const std::vector<std::string> &colNames) const;
   EagerDataFrame sort(const std::vector<std::string> &colNames, bool ascending = true) const;
+  EagerDataFrame join(const EagerDataFrame &other,
+                      const std::vector<std::string> &onColumns,
+                      const std::string &how = "inner") const;
   void print() const;
 
 private:
