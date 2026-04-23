@@ -86,6 +86,8 @@ inline std::shared_ptr<arrow::DataType> toArrowType(DataType dt)
     return arrow::utf8();
   case DataType::BOOLEAN:
     return arrow::boolean();
+  default:
+    throw std::runtime_error("Unsupported data type");
   }
 }
 

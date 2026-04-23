@@ -52,9 +52,9 @@ int main()
   }
 
   // Test 4 — chained with filter
-  // std::cout << "=== filter then select ===\n";
-  // df.filter(col("age") > 30)
-  //     .select({"name", "salary"})
-  //     .print();
+  std::cout << "=== filter then select ===\n";
+  df.filter(col("age") > 30)
+      .select({"name", "salary"})
+      .print();
   // expected: Bob 70000, Dave 90000
 }

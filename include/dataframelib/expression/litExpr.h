@@ -23,13 +23,65 @@ public:
 
     // Build an array of the literal value repeated for every row
     int64_t numRows = table->num_rows();
-    // (actual array building using Arrow builders goes here)
-    // Example for int32:
-    // arrow::Int32Builder builder;
-    // for (int i = 0; i < numRows; i++) builder.Append(std::get<int32_t>(value_));
-    // std::shared_ptr<arrow::Array> arr;
-    // builder.Finish(&arr);
-    // return std::make_shared<arrow::ChunkedArray>(arr);
+    switch (type_)
+    {
+    case DataType::INT32:
+    {
+      arrow::Int32Builder builder;
+      for (int64_t i = 0; i < numRows; i++)
+        builder.Append(std::get<int32_t>(value_));
+      std::shared_ptr<arrow::Array> arr;
+      builder.Finish(&arr);
+      return std::make_shared<arrow::ChunkedArray>(arr);
+    }
+    case DataType::INT64:
+    {
+      arrow::Int64Builder builder;
+      for (int64_t i = 0; i < numRows; i++)
+        builder.Append(std::get<int64_t>(value_));
+      std::shared_ptr<arrow::Array> arr;
+      builder.Finish(&arr);
+      return std::make_shared<arrow::ChunkedArray>(arr);
+    }
+    case DataType::FLOAT32:
+    {
+      arrow::FloatBuilder builder;
+      for (int64_t i = 0; i < numRows; i++)
+        builder.Append(std::get<float>(value_));
+      std::shared_ptr<arrow::Array> arr;
+      builder.Finish(&arr);
+      return std::make_shared<arrow::ChunkedArray>(arr);
+    }
+    case DataType::FLOAT64:
+    {
+      arrow::DoubleBuilder builder;
+      for (int64_t i = 0; i < numRows; i++)
+        builder.Append(std::get<double>(value_));
+      std::shared_ptr<arrow::Array> arr;
+      builder.Finish(&arr);
+      return std::make_shared<arrow::ChunkedArray>(arr);
+    }
+    case DataType::STRING:
+    {
+      arrow::StringBuilder builder;
+      for (int64_t i = 0; i < numRows; i++)
+        builder.Append(std::get<std::string>(value_));
+      std::shared_ptr<arrow::Array> arr;
+      builder.Finish(&arr);
+      return std::make_shared<arrow::ChunkedArray>(arr);
+    }
+    case DataType::BOOLEAN:
+    {
+      arrow::BooleanBuilder builder;
+      for (int64_t i = 0; i < numRows; i++)
+        builder.Append(std::get<bool>(value_));
+      std::shared_ptr<arrow::Array> arr;
+      builder.Finish(&arr);
+      return std::make_shared<arrow::ChunkedArray>(arr);
+    }
+    default:
+      throw std::runtime_error("Unhandled literal type");
+    }
   }
 
   DataType resultType(const std::shared_ptr<arrow::Schema> &) const override
