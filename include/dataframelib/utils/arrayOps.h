@@ -111,4 +111,23 @@ std::shared_ptr<arrow::ChunkedArray> applyBooleanMask(
     const std::shared_ptr<arrow::Array> &arr,
     const std::shared_ptr<arrow::BooleanArray> &mask,
     DataType type);
+
+// Extracts a comparable value from a row as a variant
+using RowValue = std::variant<int32_t, int64_t, float, double,
+                              std::string, bool>;
+
+RowValue extractRowValue(
+    const std::shared_ptr<arrow::Array> &arr,
+    int64_t row,
+    DataType type);
+
+// Compare two RowValues — returns negative, 0, or positive
+int compareRowValues(const RowValue &a, const RowValue &b);
+
+// ArrayOps.h
+std::shared_ptr<arrow::ChunkedArray> reorderByIndices(
+    const std::shared_ptr<arrow::Array> &arr,
+    const std::vector<int64_t> &indices,
+    DataType type);
+
 #endif

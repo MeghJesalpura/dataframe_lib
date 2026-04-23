@@ -256,3 +256,65 @@ EagerDataFrame EagerDataFrame::head(size_t n) const
   auto newTable = arrow::Table::Make(table_->schema(), arrays);
   return EagerDataFrame(newTable);
 }
+
+EagerDataFrame EagerDataFrame::sort(
+    const std::vector<std::string> &colNames,
+    bool ascending) const
+{
+  int64_t n = table_->num_rows();
+
+  // flatten all sort columns upfront
+  // store as pair of (flattened array, DataType)
+  std::vector<std::pair<std::shared_ptr<arrow::Array>, DataType>> sortCols;
+  for (const auto &name : colNames)
+  {
+    auto col = table_->GetColumnByName(name);
+    if (!col)
+      throw std::runtime_error("Column not found: " + name);
+    auto type = fromArrowType(
+        table_->schema()->GetFieldByName(name)->type());
+    sortCols.push_back({flatten(col), type});
+  }
+
+  // build index array
+  std::vector<int64_t> indices(n);
+  std::iota(indices.begin(), indices.end(), 0);
+
+  // prefix sort comparator
+  // Only looks at key i+1 if key i was a tie
+  auto comparator = [&](int64_t rowA, int64_t rowB) -> bool
+  {
+    for (const auto &[arr, type] : sortCols)
+    {
+      auto valA = extractRowValue(arr, rowA, type);
+      auto valB = extractRowValue(arr, rowB, type);
+
+      int cmp = compareRowValues(valA, valB);
+
+      if (cmp != 0)
+      {
+        // not a tie — decide here, don't look at further keys
+        return ascending ? cmp < 0 : cmp > 0;
+      }
+      // tie — fall through to next key
+    }
+    // all keys tied — maintain original order (stable)
+    return rowA < rowB;
+  };
+
+  // stable sort preserves original order for full ties
+  std::stable_sort(indices.begin(), indices.end(), comparator);
+
+  // reorder all columns according to sorted indices
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> sortedArrays;
+  for (int col = 0; col < table_->num_columns(); col++)
+  {
+    auto colType = fromArrowType(table_->schema()->field(col)->type());
+    auto flatCol = flatten(table_->column(col));
+    sortedArrays.push_back(
+        reorderByIndices(flatCol, indices, colType));
+  }
+
+  auto newTable = arrow::Table::Make(table_->schema(), sortedArrays);
+  return EagerDataFrame(newTable);
+}

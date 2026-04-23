@@ -76,4 +76,9 @@ int main()
   std::cout << "=== head(2) ===\n";
   df.head(2).print();
   // expected: first 2 rows of the original table
+
+  // Test 8 - sort
+  std::cout << "=== sort by age desc, then salary asc ===\n";
+  df.sort({"age"}, /*ascending=*/false).print();
+  df.sort({"salary"}, /*ascending=*/true).print();
 }

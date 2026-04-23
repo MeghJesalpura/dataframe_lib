@@ -433,3 +433,111 @@ std::shared_ptr<arrow::ChunkedArray> applyBooleanMask(
   // Numeric types — dispatch via TypeTraits
   return dispatchNumeric<MaskImpl>(type, arr, mask);
 }
+
+RowValue extractRowValue(
+    const std::shared_ptr<arrow::Array> &arr,
+    int64_t row, DataType type)
+{
+  if (arr->IsNull(row))
+    return std::string("__null__");
+  switch (type)
+  {
+  case DataType::INT32:
+    return std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row);
+  case DataType::INT64:
+    return std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row);
+  case DataType::FLOAT32:
+    return std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row);
+  case DataType::FLOAT64:
+    return std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row);
+  case DataType::STRING:
+    return std::string(
+        std::static_pointer_cast<arrow::StringArray>(arr)->Value(row));
+  case DataType::BOOLEAN:
+    return std::static_pointer_cast<arrow::BooleanArray>(arr)->Value(row);
+  }
+}
+
+int compareRowValues(const RowValue &a, const RowValue &b)
+{
+  return std::visit([](const auto &x, const auto &y) -> int
+                    {
+                      if constexpr (std::is_same_v<decltype(x), decltype(y)>)
+                      {
+                        if (x < y)
+                          return -1;
+                        if (x > y)
+                          return 1;
+                        return 0;
+                      }
+                      return 0; // incompatible types — treat as equal
+                    },
+                    a, b);
+}
+
+template <DataType T>
+struct ReorderImpl
+{
+  std::shared_ptr<arrow::ChunkedArray> operator()(
+      const std::shared_ptr<arrow::Array> &arr,
+      const std::vector<int64_t> &indices)
+  {
+    using ArrType = typename TypeTraits<T>::ArrayType;
+    using Builder = typename TypeTraits<T>::BuilderType;
+
+    auto typed = std::static_pointer_cast<ArrType>(arr);
+    Builder builder;
+
+    for (int64_t idx : indices)
+    {
+      if (typed->IsNull(idx))
+        builder.AppendNull();
+      else
+        builder.Append(typed->Value(idx));
+    }
+
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
+  }
+};
+
+std::shared_ptr<arrow::ChunkedArray> reorderByIndices(
+    const std::shared_ptr<arrow::Array> &arr,
+    const std::vector<int64_t> &indices,
+    DataType type)
+{
+  if (type == DataType::STRING)
+  {
+    auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
+    arrow::StringBuilder builder;
+    for (int64_t idx : indices)
+    {
+      if (typed->IsNull(idx))
+        builder.AppendNull();
+      else
+        builder.Append(std::string(typed->Value(idx)));
+    }
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
+  }
+
+  if (type == DataType::BOOLEAN)
+  {
+    auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
+    arrow::BooleanBuilder builder;
+    for (int64_t idx : indices)
+    {
+      if (typed->IsNull(idx))
+        builder.AppendNull();
+      else
+        builder.Append(typed->Value(idx));
+    }
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
+  }
+
+  return dispatchNumeric<ReorderImpl>(type, arr, indices);
+}
