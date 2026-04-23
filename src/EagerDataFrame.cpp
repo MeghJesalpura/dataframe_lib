@@ -1,3 +1,4 @@
+#include "../include/dataframelib/Types.h"
 #include "../include/dataframelib/EagerDataFrame.h"
 #include <iostream>
 #include <arrow/csv/api.h>
@@ -7,6 +8,7 @@
 #include <arrow/csv/writer.h>
 #include "../include/dataframelib/utils/arrayUtils.h"
 #include "../include/dataframelib/utils/arrayOps.h"
+#include "../include/dataframelib/groupByObj.h"
 // read_csv
 EagerDataFrame EagerDataFrame::read_csv(const std::string &path)
 {
@@ -152,7 +154,8 @@ void EagerDataFrame::print() const
   int ncols = schema->num_fields();
   for (int i = 0; i < ncols; i++)
   {
-    if (i) std::cout << "\t";
+    if (i)
+      std::cout << "\t";
     std::cout << schema->field(i)->name();
   }
   std::cout << "\n";
@@ -160,7 +163,8 @@ void EagerDataFrame::print() const
   {
     for (int col = 0; col < ncols; col++)
     {
-      if (col) std::cout << "\t";
+      if (col)
+        std::cout << "\t";
       auto arr = flatten(table_->column(col));
       if (arr->IsNull(row))
       {
@@ -169,7 +173,8 @@ void EagerDataFrame::print() const
       else
       {
         auto res = arr->GetScalar(row);
-        if (res.ok()) std::cout << res.ValueOrDie()->ToString();
+        if (res.ok())
+          std::cout << res.ValueOrDie()->ToString();
       }
     }
     std::cout << "\n";
@@ -178,18 +183,18 @@ void EagerDataFrame::print() const
 
 EagerDataFrame EagerDataFrame::filter(const ExprPtr &predicate) const
 {
-  // Step 1 — evaluate predicate to get boolean mask
+  // evaluate predicate to get boolean mask
   auto mask = predicate.evaluate(table_);
 
-  // Step 2 — validate that result is boolean
+  // validate that result is boolean
   if (predicate.resultType(table_->schema()) != DataType::BOOLEAN)
     throw std::runtime_error("filter() predicate must return a boolean expression");
 
-  // Step 3 — flatten mask since we need contiguous access
+  // flatten mask since we need contiguous access
   auto flatMask = std::static_pointer_cast<arrow::BooleanArray>(
       flatten(mask));
 
-  // Step 4 — manually apply mask to each column
+  // manually apply mask to each column
   std::vector<std::shared_ptr<arrow::ChunkedArray>> filteredArrays;
 
   for (int i = 0; i < table_->num_columns(); i++)
@@ -201,7 +206,40 @@ EagerDataFrame EagerDataFrame::filter(const ExprPtr &predicate) const
     filteredArrays.push_back(filtered);
   }
 
-  // Step 5 — build new table with same schema
+  // building new table with same schema
   auto newTable = arrow::Table::Make(table_->schema(), filteredArrays);
+  return EagerDataFrame(newTable);
+}
+
+EagerDataFrame EagerDataFrame::with_column(const std::string &name, const ExprPtr &expr) const
+{
+  // evaluate expression to get new column data
+  auto newCol = expr.evaluate(table_);
+
+  // get result type for new column
+  auto newType = expr.resultType(table_->schema());
+
+  // flatten new column for contiguous access
+  auto flatNewCol = flatten(newCol);
+
+  // create new field for the column
+  auto newField = arrow::field(name, flatNewCol->type());
+
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+
+  for (int i = 0; i < table_->num_columns(); i++)
+  {
+    if (table_->schema()->field(i)->name() == name)
+      continue; // to replace existing column if name already exists
+    arrays.push_back(table_->column(i));
+    fields.push_back(table_->schema()->field(i));
+  }
+  arrays.push_back(toChunked(flatNewCol));
+  fields.push_back(newField);
+
+  // build new table with added column
+  auto newSchema = arrow::schema(fields);
+  auto newTable = arrow::Table::Make(newSchema, arrays);
   return EagerDataFrame(newTable);
 }

@@ -5,6 +5,7 @@
 #include "../expression/expr.h"
 #include "../utils/arrayOps.h"
 #include "../expression/exprPtr.h"
+#include "../expression/litExpr.h"
 
 class BinOpExpr : public Expr
 {

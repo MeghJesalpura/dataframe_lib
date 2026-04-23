@@ -6,6 +6,9 @@
 #include "expression/exprPtr.h"
 #include <map>
 #include <memory>
+
+class GroupByObj;
+
 class EagerDataFrame
 {
 public:
@@ -21,9 +24,17 @@ public:
   std::shared_ptr<arrow::Table> table() const { return table_; };
   EagerDataFrame select(const std::vector<std::string> &colNames) const;
   EagerDataFrame filter(const ExprPtr &predicate) const;
+  EagerDataFrame with_column(const std::string &name, const ExprPtr &expr) const;
+  GroupByObj group_by(const std::vector<std::string> &colNames) const;
   void print() const;
 
 private:
+  // The table storing the data for this DataFrame. All operations will produce new tables based on this one.
   std::shared_ptr<arrow::Table> table_;
 };
+
+// Deferred include: GroupByObj needs EagerDataFrame complete (to define group_by inline
+// and return EagerDataFrame from agg), so we include it after the class definition.
+#include "groupByObj.h"
+
 #endif

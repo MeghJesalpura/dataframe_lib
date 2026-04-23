@@ -5,12 +5,14 @@
 #include "../include/dataframelib/expression/expr.h"
 #include "../include/dataframelib/expression/colExpr.h"
 #include "../include/dataframelib/operations/relOpExpr.h"
+#include "../include/dataframelib/operations/binOpExpr.h"
+#include "../include/dataframelib/operations/unaryOpExpr.h"
 #include <map>
 int main()
 {
   // Build test table manually
   arrow::Int32Builder ageBuilder;
-  ageBuilder.AppendValues({25, 35, 28, 42});
+  ageBuilder.AppendValues({25, 25, 28, 42});
   std::shared_ptr<arrow::Array> ageArr;
   ageBuilder.Finish(&ageArr);
 
@@ -57,4 +59,16 @@ int main()
       .select({"name", "salary"})
       .print();
   // expected: Bob 70000, Dave 90000
+
+  // Test 5 — with_column
+  df.with_column("age_plus_10", col("age") + 10)
+      .select({"name", "age", "age_plus_10"})
+      .print();
+  // expected: name | age | age_plus_10 with correct values
+
+  // Test 6 - with group_by and aggregate
+  df.group_by({"age"})
+      .agg({{"salary", AggOp::MEAN}})
+      .print();
+  // expected: age | salary_mean with correct values
 }
