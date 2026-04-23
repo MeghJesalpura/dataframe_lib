@@ -23,8 +23,10 @@ struct GroupAccumulator
   {
     sum += val;
     count++;
-    if (val < min) min = val;
-    if (val > max) max = val;
+    if (val < min)
+      min = val;
+    if (val > max)
+      max = val;
   }
 };
 
@@ -33,11 +35,16 @@ static inline double extractAsDouble(const std::shared_ptr<arrow::Array> &arr, i
 {
   switch (type)
   {
-  case DataType::INT32:   return static_cast<double>(std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row));
-  case DataType::INT64:   return static_cast<double>(std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row));
-  case DataType::FLOAT32: return static_cast<double>(std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row));
-  case DataType::FLOAT64: return std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row);
-  default: throw std::runtime_error("extractAsDouble: unsupported type");
+  case DataType::INT32:
+    return static_cast<double>(std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row));
+  case DataType::INT64:
+    return static_cast<double>(std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row));
+  case DataType::FLOAT32:
+    return static_cast<double>(std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row));
+  case DataType::FLOAT64:
+    return std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row);
+  default:
+    throw std::runtime_error("extractAsDouble: unsupported type");
   }
 }
 
@@ -77,11 +84,21 @@ public:
         double result = 0.0;
         switch (op)
         {
-        case AggOp::SUM:   result = acc.sum; break;
-        case AggOp::MEAN:  result = acc.count > 0 ? acc.sum / acc.count : 0.0; break;
-        case AggOp::MIN:   result = acc.min; break;
-        case AggOp::MAX:   result = acc.max; break;
-        case AggOp::COUNT: result = static_cast<double>(acc.count); break;
+        case AggOp::SUM:
+          result = acc.sum;
+          break;
+        case AggOp::MEAN:
+          result = acc.count > 0 ? acc.sum / acc.count : 0.0;
+          break;
+        case AggOp::MIN:
+          result = acc.min;
+          break;
+        case AggOp::MAX:
+          result = acc.max;
+          break;
+        case AggOp::COUNT:
+          result = static_cast<double>(acc.count);
+          break;
         }
         builder.Append(result);
       }
@@ -101,7 +118,7 @@ private:
   std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> groups_;
 };
 
-// Defined here (not in EagerDataFrame.cpp) to avoid circular include:
+// Defined here (not in EagerDataFrame.cpp) to avoid circular include
 // groupByObj.h needs EagerDataFrame complete; EagerDataFrame.h needs GroupByObj complete.
 inline GroupByObj EagerDataFrame::group_by(const std::vector<std::string> &colNames) const
 {
@@ -141,9 +158,11 @@ inline GroupByObj EagerDataFrame::group_by(const std::vector<std::string> &colNa
     for (const auto &colName : aggCols)
     {
       auto arr = flatten(table_->GetColumnByName(colName));
-      if (arr->IsNull(row)) continue;
+      if (arr->IsNull(row))
+        continue;
       auto type = fromArrowType(table_->schema()->GetFieldByName(colName)->type());
-      if (!isNumeric(type)) continue;
+      if (!isNumeric(type))
+        continue;
       double val = extractAsDouble(arr, row, type);
       groupMap[key][colName].update(val);
     }

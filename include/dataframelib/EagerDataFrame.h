@@ -25,6 +25,7 @@ public:
   EagerDataFrame select(const std::vector<std::string> &colNames) const;
   EagerDataFrame filter(const ExprPtr &predicate) const;
   EagerDataFrame with_column(const std::string &name, const ExprPtr &expr) const;
+  EagerDataFrame head(size_t n) const;
   GroupByObj group_by(const std::vector<std::string> &colNames) const;
   void print() const;
 

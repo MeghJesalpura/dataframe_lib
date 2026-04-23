@@ -22,7 +22,7 @@ int main()
   nameBuilder.Finish(&nameArr);
 
   arrow::DoubleBuilder salaryBuilder;
-  salaryBuilder.AppendValues({50000.0, 70000.0, 60000.0, 90000.0});
+  salaryBuilder.AppendValues({50000.5, 70000.0, 60000.0, 90000.0});
   std::shared_ptr<arrow::Array> salaryArr;
   salaryBuilder.Finish(&salaryArr);
 
@@ -71,4 +71,9 @@ int main()
       .agg({{"salary", AggOp::MEAN}})
       .print();
   // expected: age | salary_mean with correct values
+
+  // Test 7 - head
+  std::cout << "=== head(2) ===\n";
+  df.head(2).print();
+  // expected: first 2 rows of the original table
 }

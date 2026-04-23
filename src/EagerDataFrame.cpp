@@ -243,3 +243,16 @@ EagerDataFrame EagerDataFrame::with_column(const std::string &name, const ExprPt
   auto newTable = arrow::Table::Make(newSchema, arrays);
   return EagerDataFrame(newTable);
 }
+
+EagerDataFrame EagerDataFrame::head(size_t n) const
+{
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
+  for (int i = 0; i < table_->num_columns(); i++)
+  {
+    auto col = table_->column(i);
+    auto headCol = col->Slice(0, std::min(static_cast<int64_t>(n), col->length()));
+    arrays.push_back(headCol);
+  }
+  auto newTable = arrow::Table::Make(table_->schema(), arrays);
+  return EagerDataFrame(newTable);
+}
