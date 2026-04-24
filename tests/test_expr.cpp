@@ -109,6 +109,7 @@ int main()
                       .aggregate({{"salary", "mean"}});
 
     std::cout << "=== lazy execution test - result of collect() ===\n";
+    result.explain("plan.png"); // dumps the DAG to a file
     auto collected = result.collect();
     std::cout << "=== lazy execution test - after collect() ===\n";
     collected.print();

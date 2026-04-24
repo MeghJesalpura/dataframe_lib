@@ -1,5 +1,9 @@
 #include "../include/dataframelib/LazyDataFrame.h"
 #include "../include/dataframelib/QueryExecutor.h"
+#include <iostream>
+#include <fstream>
+#include <stdexcept>
+#include "../include/dataframelib/utils/graphRender.h"
 LazyDataFrame scan_csv(const std::string &path)
 {
   return LazyDataFrame(ScanNode{.file_path = path, .is_csv = true});
@@ -72,4 +76,27 @@ EagerDataFrame LazyDataFrame::collect() const
   // this is where we would execute the plan represented by rootNode_ and return an EagerDataFrame
   // post order traversal of the DAG
   return QueryExecutor::execute(rootNode_);
+}
+
+void LazyDataFrame::explain(const std::string &path) const
+{
+  // Step 1 — generate .dot file
+  std::string dotPath = path + ".dot";
+  std::ofstream out(dotPath);
+
+  out << "digraph {\n";
+  out << "  rankdir=BT;\n"; // bottom to top — scan at bottom, result at top
+  out << "  node [shape=box, style=filled, fillcolor=lightblue];\n";
+
+  int nodeId = 0;
+  writeDot(out, rootNode_, nodeId);
+
+  out << "}\n";
+  out.close();
+
+  // Step 2 — call graphviz to render
+  std::string cmd = "dot -Tpng " + dotPath + " -o " + path;
+  int ret = system(cmd.c_str());
+  if (ret != 0)
+    throw std::runtime_error("Graphviz failed — is 'dot' installed?");
 }

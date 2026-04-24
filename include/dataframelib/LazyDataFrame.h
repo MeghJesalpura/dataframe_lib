@@ -28,7 +28,8 @@ public:
   LazyDataFrame join(const LazyDataFrame &other, const std::vector<std::string> &onCols, const std::string &how = "inner") const;
   LazyDataFrame sort(const std::vector<std::string> &sortCols, bool ascending = true) const;
   LazyDataFrame head(size_t n) const;
-  EagerDataFrame collect() const; // executes the plan and returns an EagerDataFrame
+  EagerDataFrame collect() const;              // executes the plan and returns an EagerDataFrame
+  void explain(const std::string &path) const; // dumps the DAG
 };
 
 LazyDataFrame scan_csv(const std::string &path);

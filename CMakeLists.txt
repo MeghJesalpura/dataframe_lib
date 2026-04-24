@@ -35,7 +35,9 @@ add_executable(test_expr tests/test_expr.cpp
     include/dataframelib/groupByObj.h
     include/dataframelib/QueryExecutor.h
     src/QueryExecutor.cpp
-    data.parquet)
+    data.parquet
+    include/dataframelib/utils/graphRender.h
+    include/dataframelib/utils/overloaded.h)
 target_link_libraries(test_expr PRIVATE 
 Arrow::arrow_shared
 ArrowDataset::arrow_dataset_shared
