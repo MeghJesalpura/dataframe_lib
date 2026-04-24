@@ -29,7 +29,13 @@ add_executable(test_expr tests/test_expr.cpp
     src/utils/opsHelper.cpp
     include/dataframelib/utils/opsHelper.h
     src/EagerDataFrame.cpp
-    include/dataframelib/groupByObj.h)
+    include/dataframelib/lazy/nodes.h
+    include/dataframelib/LazyDataFrame.h
+    src/LazyDataFrame.cpp
+    include/dataframelib/groupByObj.h
+    include/dataframelib/QueryExecutor.h
+    src/QueryExecutor.cpp
+    data.parquet)
 target_link_libraries(test_expr PRIVATE 
 Arrow::arrow_shared
 ArrowDataset::arrow_dataset_shared

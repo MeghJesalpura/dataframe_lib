@@ -483,3 +483,112 @@ EagerDataFrame EagerDataFrame::join(const EagerDataFrame &other,
   auto newTable = arrow::Table::Make(newSchema, allArrays);
   return EagerDataFrame(newTable);
 }
+
+GroupByObj EagerDataFrame::group_by(const std::vector<std::string> &colNames) const
+{
+  std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> groupMap;
+
+  std::vector<std::string> aggCols;
+  bool flag = false;
+  for (int i = 0; i < table_->num_columns(); i++)
+  {
+    const std::string &name = table_->schema()->field(i)->name();
+    if (std::find(colNames.begin(), colNames.end(), name) == colNames.end())
+      aggCols.push_back(name);
+    else
+      flag = true;
+  }
+  // if no columns to group on - what should be done? Throw an error i think
+  // will have to check
+  if (flag == false)
+    throw std::runtime_error("No valid group by columns found in the table");
+  for (int64_t row = 0; row < table_->num_rows(); row++)
+  {
+    std::vector<std::string> key;
+    for (const auto &k : colNames)
+    {
+      auto arr = flatten(table_->GetColumnByName(k));
+      if (arr->IsNull(row))
+        key.push_back("null");
+      else
+      {
+        auto res = arr->GetScalar(row);
+        key.push_back(res.ok() ? res.ValueOrDie()->ToString() : "null");
+      }
+    }
+    groupMap.emplace(key, std::map<std::string, GroupAccumulator>{});
+    for (const auto &colName : aggCols)
+    {
+      auto arr = flatten(table_->GetColumnByName(colName));
+      if (arr->IsNull(row))
+        continue;
+      auto type = fromArrowType(table_->schema()->GetFieldByName(colName)->type());
+      if (!isNumeric(type))
+        continue;
+      groupMap[key][colName].update(extractAsDouble(arr, row, type));
+    }
+  }
+  return GroupByObj(colNames, groupMap);
+}
+
+EagerDataFrame GroupByObj::aggregate(const std::map<std::string, std::string> &aggMap) const
+{
+  std::vector<std::shared_ptr<arrow::Field>> fields;
+  std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
+
+  for (size_t ki = 0; ki < groupKeys_.size(); ki++)
+  {
+    arrow::StringBuilder builder;
+    for (const auto &[key, _] : groups_)
+      builder.Append(key[ki]);
+    std::shared_ptr<arrow::Array> arr;
+    builder.Finish(&arr);
+    fields.push_back(arrow::field(groupKeys_[ki], arrow::utf8()));
+    arrays.push_back(toChunked(arr));
+  }
+
+  for (const auto &[colName, op] : aggMap)
+  {
+    arrow::DoubleBuilder builder;
+    for (const auto &[key, colAccs] : groups_)
+    {
+      auto it = colAccs.find(colName);
+      GroupAccumulator defaultAcc;
+      const auto &acc = (it != colAccs.end()) ? it->second : defaultAcc;
+      double result = 0.0;
+      if (op == "sum")
+      {
+        result = acc.sum;
+      }
+      else if (op == "count")
+      {
+        result = static_cast<double>(acc.count);
+      }
+      else if (op == "min")
+      {
+        result = acc.min;
+      }
+      else if (op == "max")
+      {
+        result = acc.max;
+      }
+      else if (op == "mean")
+      {
+        result = acc.count > 0 ? acc.sum / acc.count : 0.0;
+      }
+      else
+      {
+        throw std::runtime_error("Unsupported aggregation operation: " + op);
+      }
+      builder.Append(result);
+    }
+    std::shared_ptr<arrow::Array> arr;
+    builder.Finish(&arr);
+    fields.push_back(arrow::field(colName, arrow::float64()));
+    arrays.push_back(toChunked(arr));
+  }
+
+  auto schema = arrow::schema(fields);
+  auto table = arrow::Table::Make(schema, arrays);
+  return EagerDataFrame(table);
+}

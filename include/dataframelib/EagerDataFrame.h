@@ -38,8 +38,5 @@ private:
   std::shared_ptr<arrow::Table> table_;
 };
 
-// Deferred include: GroupByObj needs EagerDataFrame complete (to define group_by inline
-// and return EagerDataFrame from agg), so we include it after the class definition.
-#include "groupByObj.h"
 
 #endif
