@@ -488,20 +488,23 @@ GroupByObj EagerDataFrame::group_by(const std::vector<std::string> &colNames) co
 {
   std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> groupMap;
 
+  for (const auto &k : colNames)
+    if (!table_->GetColumnByName(k))
+      return GroupByObj(colNames, {}, {});
+
   std::vector<std::string> aggCols;
-  bool flag = false;
+  std::map<std::string, DataType> colTypes;
   for (int i = 0; i < table_->num_columns(); i++)
   {
     const std::string &name = table_->schema()->field(i)->name();
     if (std::find(colNames.begin(), colNames.end(), name) == colNames.end())
+    {
       aggCols.push_back(name);
-    else
-      flag = true;
+      auto type = fromArrowType(table_->schema()->field(i)->type());
+      if (isNumeric(type))
+        colTypes[name] = type;
+    }
   }
-  // if no columns to group on - what should be done? Throw an error i think
-  // will have to check
-  if (flag == false)
-    throw std::runtime_error("No valid group by columns found in the table");
   for (int64_t row = 0; row < table_->num_rows(); row++)
   {
     std::vector<std::string> key;
@@ -528,7 +531,55 @@ GroupByObj EagerDataFrame::group_by(const std::vector<std::string> &colNames) co
       groupMap[key][colName].update(extractAsDouble(arr, row, type));
     }
   }
-  return GroupByObj(colNames, groupMap);
+  return GroupByObj(colNames, groupMap, colTypes);
+}
+
+static std::shared_ptr<arrow::Array> buildAggArray(
+    const std::vector<double> &vals, DataType type, const std::string &op)
+{
+  std::shared_ptr<arrow::Array> arr;
+  if (op == "count")
+  {
+    arrow::Int64Builder b;
+    for (double v : vals) b.Append(static_cast<int64_t>(v));
+    b.Finish(&arr);
+    return arr;
+  }
+  switch (type)
+  {
+  case DataType::INT32: {
+    arrow::Int32Builder b;
+    for (double v : vals) b.Append(static_cast<int32_t>(v));
+    b.Finish(&arr); return arr;
+  }
+  case DataType::INT64: {
+    arrow::Int64Builder b;
+    for (double v : vals) b.Append(static_cast<int64_t>(v));
+    b.Finish(&arr); return arr;
+  }
+  case DataType::FLOAT32: {
+    arrow::FloatBuilder b;
+    for (double v : vals) b.Append(static_cast<float>(v));
+    b.Finish(&arr); return arr;
+  }
+  default: {
+    arrow::DoubleBuilder b;
+    for (double v : vals) b.Append(v);
+    b.Finish(&arr); return arr;
+  }
+  }
+}
+
+static std::shared_ptr<arrow::DataType> aggOutputArrowType(DataType type, const std::string &op)
+{
+  if (op == "count") return arrow::int64();
+  switch (type)
+  {
+  case DataType::INT32:   return arrow::int32();
+  case DataType::INT64:   return arrow::int64();
+  case DataType::FLOAT32: return arrow::float32();
+  default:                return arrow::float64();
+  }
 }
 
 EagerDataFrame GroupByObj::aggregate(const std::map<std::string, std::string> &aggMap) const
@@ -549,42 +600,27 @@ EagerDataFrame GroupByObj::aggregate(const std::map<std::string, std::string> &a
 
   for (const auto &[colName, op] : aggMap)
   {
-    arrow::DoubleBuilder builder;
+    DataType colType = DataType::FLOAT64;
+    if (auto it = colTypes_.find(colName); it != colTypes_.end())
+      colType = it->second;
+
+    std::vector<double> results;
     for (const auto &[key, colAccs] : groups_)
     {
       auto it = colAccs.find(colName);
       GroupAccumulator defaultAcc;
       const auto &acc = (it != colAccs.end()) ? it->second : defaultAcc;
       double result = 0.0;
-      if (op == "sum")
-      {
-        result = acc.sum;
-      }
-      else if (op == "count")
-      {
-        result = static_cast<double>(acc.count);
-      }
-      else if (op == "min")
-      {
-        result = acc.min;
-      }
-      else if (op == "max")
-      {
-        result = acc.max;
-      }
-      else if (op == "mean")
-      {
-        result = acc.count > 0 ? acc.sum / acc.count : 0.0;
-      }
-      else
-      {
-        throw std::runtime_error("Unsupported aggregation operation: " + op);
-      }
-      builder.Append(result);
+      if (op == "sum")        result = acc.sum;
+      else if (op == "count") result = static_cast<double>(acc.count);
+      else if (op == "min")   result = acc.min;
+      else if (op == "max")   result = acc.max;
+      else if (op == "mean")  result = acc.count > 0 ? acc.sum / acc.count : 0.0;
+      else throw std::runtime_error("Unsupported aggregation operation: " + op);
+      results.push_back(result);
     }
-    std::shared_ptr<arrow::Array> arr;
-    builder.Finish(&arr);
-    fields.push_back(arrow::field(colName, arrow::float64()));
+    auto arr = buildAggArray(results, colType, op);
+    fields.push_back(arrow::field(colName, aggOutputArrowType(colType, op)));
     arrays.push_back(toChunked(arr));
   }
 

@@ -51,14 +51,16 @@ class GroupByObj
 {
 public:
   GroupByObj(const std::vector<std::string> &groupKeys,
-             const std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> &groups)
-      : groupKeys_(groupKeys), groups_(groups) {}
+             const std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> &groups,
+             const std::map<std::string, DataType> &colTypes)
+      : groupKeys_(groupKeys), groups_(groups), colTypes_(colTypes) {}
 
   EagerDataFrame aggregate(const std::map<std::string, std::string> &aggMap) const;
 
 private:
   std::vector<std::string> groupKeys_;
   std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> groups_;
+  std::map<std::string, DataType> colTypes_;
 };
 
 #endif
