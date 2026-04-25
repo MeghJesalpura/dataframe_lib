@@ -1,543 +1,547 @@
 #include "../../include/dataframelib/utils/arrayOps.h"
 #include "../../include/dataframelib/utils/opsHelper.h"
 // Generic row iterator to remove abstract out repetitive code
-template <DataType T, typename OutputBuilder, typename Func>
-std::shared_ptr<arrow::Array> applyRowwise(
-    const std::shared_ptr<arrow::Array> &left,
-    const std::shared_ptr<arrow::Array> &right,
-    Func &&fn)
+
+namespace dataframelib
 {
-  using ArrType = typename TypeTraits<T>::ArrayType;
-  auto l = std::static_pointer_cast<ArrType>(left);
-  auto r = std::static_pointer_cast<ArrType>(right);
-  OutputBuilder builder;
-
-  for (int64_t i = 0; i < l->length(); i++)
+  template <DataType T, typename OutputBuilder, typename Func>
+  std::shared_ptr<arrow::Array> applyRowwise(
+      const std::shared_ptr<arrow::Array> &left,
+      const std::shared_ptr<arrow::Array> &right,
+      Func &&fn)
   {
-    if (l->IsNull(i) || r->IsNull(i))
-    {
-      builder.AppendNull();
-    }
-    else
-    {
-      builder.Append(fn(l->Value(i), r->Value(i)));
-    }
-  }
+    using ArrType = typename TypeTraits<T>::ArrayType;
+    auto l = std::static_pointer_cast<ArrType>(left);
+    auto r = std::static_pointer_cast<ArrType>(right);
+    OutputBuilder builder;
 
-  std::shared_ptr<arrow::Array> result;
-  builder.Finish(&result);
-  return result;
-}
-
-// Unary version
-template <DataType T, typename OutputBuilder, typename Func>
-std::shared_ptr<arrow::Array> applyRowwiseUnary(
-    const std::shared_ptr<arrow::Array> &arr,
-    Func &&fn)
-{
-  using ArrType = typename TypeTraits<T>::ArrayType;
-  auto a = std::static_pointer_cast<ArrType>(arr);
-  OutputBuilder builder;
-
-  for (int64_t i = 0; i < a->length(); i++)
-  {
-    if (a->IsNull(i))
+    for (int64_t i = 0; i < l->length(); i++)
     {
-      builder.AppendNull();
-    }
-    else
-    {
-      builder.Append(fn(a->Value(i)));
-    }
-  }
-  std::shared_ptr<arrow::Array> result;
-  builder.Finish(&result);
-  return result;
-}
-
-template <DataType T>
-struct BinaryOpImpl
-{
-  std::shared_ptr<arrow::ChunkedArray> operator()(
-      const std::shared_ptr<arrow::Array> &l,
-      const std::shared_ptr<arrow::Array> &r,
-      BinaryOp op)
-  {
-    using Builder = typename TypeTraits<T>::BuilderType;
-    using Cpp = typename TypeTraits<T>::CppType;
-
-    std::shared_ptr<arrow::Array> result;
-    switch (op)
-    {
-    case BinaryOp::ADD:
-      result = applyRowwise<T, Builder>(l, r,
-                                        [](Cpp a, Cpp b)
-                                        { return a + b; });
-      break;
-    case BinaryOp::SUB:
-      result = applyRowwise<T, Builder>(l, r,
-                                        [](Cpp a, Cpp b)
-                                        { return a - b; });
-      break;
-    case BinaryOp::MUL:
-      result = applyRowwise<T, Builder>(l, r,
-                                        [](Cpp a, Cpp b)
-                                        { return a * b; });
-      break;
-    case BinaryOp::DIV:
-      result = applyRowwise<T, Builder>(l, r,
-                                        [](Cpp a, Cpp b) -> Cpp
-                                        {
-                                          if (b == 0)
-                                            throw std::runtime_error("Division by zero");
-                                          return a / b;
-                                        });
-      break;
-    case BinaryOp::MOD:
-      if constexpr (std::is_integral_v<Cpp>)
+      if (l->IsNull(i) || r->IsNull(i))
       {
-        result = applyRowwise<T, Builder>(l, r,
-                                          [](Cpp a, Cpp b) -> Cpp
-                                          {
-                                            if (b == 0)
-                                              throw std::runtime_error("Modulo by zero");
-                                            return a % b;
-                                          });
+        builder.AppendNull();
       }
       else
       {
-        throw std::runtime_error("MOD only valid for integer types");
+        builder.Append(fn(l->Value(i), r->Value(i)));
       }
-      break;
     }
-    return toChunked(result);
-  }
-};
 
-std::shared_ptr<arrow::ChunkedArray> applyBinaryOp(
-    const std::shared_ptr<arrow::ChunkedArray> &left,
-    const std::shared_ptr<arrow::ChunkedArray> &right,
-    DataType type, BinaryOp op)
-{
-  auto l = flatten(left);
-  auto r = flatten(right);
-  return dispatchNumeric<BinaryOpImpl>(type, l, r, op);
-}
-
-// RelOp dispatch
-template <DataType T>
-struct RelOpImpl
-{
-  std::shared_ptr<arrow::ChunkedArray> operator()(
-      const std::shared_ptr<arrow::Array> &l,
-      const std::shared_ptr<arrow::Array> &r,
-      RelOp op)
-  {
-
-    using Cpp = typename TypeTraits<T>::CppType;
-
-    auto result = applyRowwise<T, arrow::BooleanBuilder>(l, r,
-                                                         [op](Cpp a, Cpp b) -> bool
-                                                         {
-                                                           switch (op)
-                                                           {
-                                                           case RelOp::EQ:
-                                                             return a == b;
-                                                           case RelOp::NEQ:
-                                                             return a != b;
-                                                           case RelOp::LT:
-                                                             return a < b;
-                                                           case RelOp::LTE:
-                                                             return a <= b;
-                                                           case RelOp::GT:
-                                                             return a > b;
-                                                           case RelOp::GTE:
-                                                             return a >= b;
-                                                           }
-                                                         });
-    return toChunked(result);
-  }
-};
-
-std::shared_ptr<arrow::ChunkedArray> applyRelOp(
-    const std::shared_ptr<arrow::ChunkedArray> &left,
-    const std::shared_ptr<arrow::ChunkedArray> &right,
-    DataType type, RelOp op)
-{
-
-  auto l = flatten(left);
-  auto r = flatten(right);
-  return dispatchNumeric<RelOpImpl>(type, l, r, op);
-}
-
-// BoolOp
-std::shared_ptr<arrow::ChunkedArray> applyBoolOp(
-    const std::shared_ptr<arrow::ChunkedArray> &left,
-    const std::shared_ptr<arrow::ChunkedArray> &right,
-    BoolOp op)
-{
-
-  auto l = std::static_pointer_cast<arrow::BooleanArray>(flatten(left));
-  auto r = std::static_pointer_cast<arrow::BooleanArray>(flatten(right));
-  arrow::BooleanBuilder builder;
-
-  for (int64_t i = 0; i < l->length(); i++)
-  {
-    if (l->IsNull(i) || r->IsNull(i))
-    {
-      builder.AppendNull();
-      continue;
-    }
-    bool lv = l->Value(i), rv = r->Value(i);
-    builder.Append(op == BoolOp::AND ? lv && rv : lv || rv);
-  }
-
-  std::shared_ptr<arrow::Array> result;
-  builder.Finish(&result);
-  return toChunked(result);
-}
-
-// UnaryOp
-template <DataType T>
-struct UnaryOpImpl
-{
-  std::shared_ptr<arrow::ChunkedArray> operator()(
-      const std::shared_ptr<arrow::Array> &arr, UnaryOp op)
-  {
-
-    using Builder = typename TypeTraits<T>::BuilderType;
-    using Cpp = typename TypeTraits<T>::CppType;
-
-    auto result = applyRowwiseUnary<T, Builder>(arr,
-                                                [](Cpp a)
-                                                { return std::abs(a); }); // only ABS reaches here
-    return toChunked(result);
-  }
-};
-
-std::shared_ptr<arrow::ChunkedArray> applyUnaryOp(
-    const std::shared_ptr<arrow::ChunkedArray> &arr,
-    DataType type, UnaryOp op)
-{
-
-  auto flat = flatten(arr);
-
-  // IS_NULL and IS_NOT_NULL don't need type dispatch
-  if (op == UnaryOp::IS_NULL || op == UnaryOp::IS_NOT_NULL)
-  {
-    arrow::BooleanBuilder builder;
-    for (int64_t i = 0; i < flat->length(); i++)
-      builder.Append(op == UnaryOp::IS_NULL
-                         ? flat->IsNull(i)
-                         : flat->IsValid(i));
     std::shared_ptr<arrow::Array> result;
     builder.Finish(&result);
-    return toChunked(result);
+    return result;
   }
 
-  // NOT
-  if (op == UnaryOp::NOT)
+  // Unary version
+  template <DataType T, typename OutputBuilder, typename Func>
+  std::shared_ptr<arrow::Array> applyRowwiseUnary(
+      const std::shared_ptr<arrow::Array> &arr,
+      Func &&fn)
   {
-    auto a = std::static_pointer_cast<arrow::BooleanArray>(flat);
-    arrow::BooleanBuilder builder;
+    using ArrType = typename TypeTraits<T>::ArrayType;
+    auto a = std::static_pointer_cast<ArrType>(arr);
+    OutputBuilder builder;
+
     for (int64_t i = 0; i < a->length(); i++)
     {
       if (a->IsNull(i))
       {
         builder.AppendNull();
+      }
+      else
+      {
+        builder.Append(fn(a->Value(i)));
+      }
+    }
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return result;
+  }
+
+  template <DataType T>
+  struct BinaryOpImpl
+  {
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::Array> &l,
+        const std::shared_ptr<arrow::Array> &r,
+        BinaryOp op)
+    {
+      using Builder = typename TypeTraits<T>::BuilderType;
+      using Cpp = typename TypeTraits<T>::CppType;
+
+      std::shared_ptr<arrow::Array> result;
+      switch (op)
+      {
+      case BinaryOp::ADD:
+        result = applyRowwise<T, Builder>(l, r,
+                                          [](Cpp a, Cpp b)
+                                          { return a + b; });
+        break;
+      case BinaryOp::SUB:
+        result = applyRowwise<T, Builder>(l, r,
+                                          [](Cpp a, Cpp b)
+                                          { return a - b; });
+        break;
+      case BinaryOp::MUL:
+        result = applyRowwise<T, Builder>(l, r,
+                                          [](Cpp a, Cpp b)
+                                          { return a * b; });
+        break;
+      case BinaryOp::DIV:
+        result = applyRowwise<T, Builder>(l, r,
+                                          [](Cpp a, Cpp b) -> Cpp
+                                          {
+                                            if (b == 0)
+                                              throw std::runtime_error("Division by zero");
+                                            return a / b;
+                                          });
+        break;
+      case BinaryOp::MOD:
+        if constexpr (std::is_integral_v<Cpp>)
+        {
+          result = applyRowwise<T, Builder>(l, r,
+                                            [](Cpp a, Cpp b) -> Cpp
+                                            {
+                                              if (b == 0)
+                                                throw std::runtime_error("Modulo by zero");
+                                              return a % b;
+                                            });
+        }
+        else
+        {
+          throw std::runtime_error("MOD only valid for integer types");
+        }
+        break;
+      }
+      return toChunked(result);
+    }
+  };
+
+  std::shared_ptr<arrow::ChunkedArray> applyBinaryOp(
+      const std::shared_ptr<arrow::ChunkedArray> &left,
+      const std::shared_ptr<arrow::ChunkedArray> &right,
+      DataType type, BinaryOp op)
+  {
+    auto l = flatten(left);
+    auto r = flatten(right);
+    return dispatchNumeric<BinaryOpImpl>(type, l, r, op);
+  }
+
+  // RelOp dispatch
+  template <DataType T>
+  struct RelOpImpl
+  {
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::Array> &l,
+        const std::shared_ptr<arrow::Array> &r,
+        RelOp op)
+    {
+
+      using Cpp = typename TypeTraits<T>::CppType;
+
+      auto result = applyRowwise<T, arrow::BooleanBuilder>(l, r,
+                                                           [op](Cpp a, Cpp b) -> bool
+                                                           {
+                                                             switch (op)
+                                                             {
+                                                             case RelOp::EQ:
+                                                               return a == b;
+                                                             case RelOp::NEQ:
+                                                               return a != b;
+                                                             case RelOp::LT:
+                                                               return a < b;
+                                                             case RelOp::LTE:
+                                                               return a <= b;
+                                                             case RelOp::GT:
+                                                               return a > b;
+                                                             case RelOp::GTE:
+                                                               return a >= b;
+                                                             }
+                                                           });
+      return toChunked(result);
+    }
+  };
+
+  std::shared_ptr<arrow::ChunkedArray> applyRelOp(
+      const std::shared_ptr<arrow::ChunkedArray> &left,
+      const std::shared_ptr<arrow::ChunkedArray> &right,
+      DataType type, RelOp op)
+  {
+
+    auto l = flatten(left);
+    auto r = flatten(right);
+    return dispatchNumeric<RelOpImpl>(type, l, r, op);
+  }
+
+  // BoolOp
+  std::shared_ptr<arrow::ChunkedArray> applyBoolOp(
+      const std::shared_ptr<arrow::ChunkedArray> &left,
+      const std::shared_ptr<arrow::ChunkedArray> &right,
+      BoolOp op)
+  {
+
+    auto l = std::static_pointer_cast<arrow::BooleanArray>(flatten(left));
+    auto r = std::static_pointer_cast<arrow::BooleanArray>(flatten(right));
+    arrow::BooleanBuilder builder;
+
+    for (int64_t i = 0; i < l->length(); i++)
+    {
+      if (l->IsNull(i) || r->IsNull(i))
+      {
+        builder.AppendNull();
         continue;
       }
-      builder.Append(!a->Value(i));
+      bool lv = l->Value(i), rv = r->Value(i);
+      builder.Append(op == BoolOp::AND ? lv && rv : lv || rv);
     }
+
     std::shared_ptr<arrow::Array> result;
     builder.Finish(&result);
     return toChunked(result);
   }
 
-  // ABS — needs type dispatch
-  return dispatchNumeric<UnaryOpImpl>(type, flat, op);
-}
-
-// StringOp
-std::shared_ptr<arrow::ChunkedArray> applyStringUnOp(
-    const std::shared_ptr<arrow::ChunkedArray> &arr,
-    StringUnOp op,
-    const std::string &arg)
-{
-  auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
-  arrow::StringBuilder strBuilder;
-  arrow::Int32Builder intBuilder;
-  arrow::BooleanBuilder boolBuilder;
-
-  for (int64_t i = 0; i < flat->length(); i++)
+  // UnaryOp
+  template <DataType T>
+  struct UnaryOpImpl
   {
-    if (flat->IsNull(i))
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::Array> &arr, UnaryOp op)
     {
+
+      using Builder = typename TypeTraits<T>::BuilderType;
+      using Cpp = typename TypeTraits<T>::CppType;
+
+      auto result = applyRowwiseUnary<T, Builder>(arr,
+                                                  [](Cpp a)
+                                                  { return std::abs(a); }); // only ABS reaches here
+      return toChunked(result);
+    }
+  };
+
+  std::shared_ptr<arrow::ChunkedArray> applyUnaryOp(
+      const std::shared_ptr<arrow::ChunkedArray> &arr,
+      DataType type, UnaryOp op)
+  {
+
+    auto flat = flatten(arr);
+
+    // IS_NULL and IS_NOT_NULL don't need type dispatch
+    if (op == UnaryOp::IS_NULL || op == UnaryOp::IS_NOT_NULL)
+    {
+      arrow::BooleanBuilder builder;
+      for (int64_t i = 0; i < flat->length(); i++)
+        builder.Append(op == UnaryOp::IS_NULL
+                           ? flat->IsNull(i)
+                           : flat->IsValid(i));
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
+    }
+
+    // NOT
+    if (op == UnaryOp::NOT)
+    {
+      auto a = std::static_pointer_cast<arrow::BooleanArray>(flat);
+      arrow::BooleanBuilder builder;
+      for (int64_t i = 0; i < a->length(); i++)
+      {
+        if (a->IsNull(i))
+        {
+          builder.AppendNull();
+          continue;
+        }
+        builder.Append(!a->Value(i));
+      }
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
+    }
+
+    // ABS — needs type dispatch
+    return dispatchNumeric<UnaryOpImpl>(type, flat, op);
+  }
+
+  // StringOp
+  std::shared_ptr<arrow::ChunkedArray> applyStringUnOp(
+      const std::shared_ptr<arrow::ChunkedArray> &arr,
+      StringUnOp op,
+      const std::string &arg)
+  {
+    auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
+    arrow::StringBuilder strBuilder;
+    arrow::Int32Builder intBuilder;
+    arrow::BooleanBuilder boolBuilder;
+
+    for (int64_t i = 0; i < flat->length(); i++)
+    {
+      if (flat->IsNull(i))
+      {
+        switch (op)
+        {
+        case StringUnOp::LENGTH:
+          intBuilder.AppendNull();
+          break;
+        case StringUnOp::TO_LOWER:
+        case StringUnOp::TO_UPPER:
+          strBuilder.AppendNull();
+          break;
+        default:
+          boolBuilder.AppendNull();
+          break;
+        }
+        continue;
+      }
+      std::string s(flat->Value(i));
       switch (op)
       {
       case StringUnOp::LENGTH:
-        intBuilder.AppendNull();
+        intBuilder.Append(static_cast<int32_t>(s.size()));
         break;
       case StringUnOp::TO_LOWER:
-      case StringUnOp::TO_UPPER:
-        strBuilder.AppendNull();
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        strBuilder.Append(s);
         break;
-      default:
-        boolBuilder.AppendNull();
+      case StringUnOp::TO_UPPER:
+        std::transform(s.begin(), s.end(), s.begin(), ::toupper);
+        strBuilder.Append(s);
         break;
       }
-      continue;
     }
-    std::string s(flat->Value(i));
+
+    std::shared_ptr<arrow::Array> result;
     switch (op)
     {
     case StringUnOp::LENGTH:
-      intBuilder.Append(static_cast<int32_t>(s.size()));
+      intBuilder.Finish(&result);
       break;
     case StringUnOp::TO_LOWER:
-      std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-      strBuilder.Append(s);
-      break;
     case StringUnOp::TO_UPPER:
-      std::transform(s.begin(), s.end(), s.begin(), ::toupper);
-      strBuilder.Append(s);
+      strBuilder.Finish(&result);
       break;
     }
+    return toChunked(result);
   }
 
-  std::shared_ptr<arrow::Array> result;
-  switch (op)
+  std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
+      const std::shared_ptr<arrow::ChunkedArray> &arr,
+      const std::string &arg,
+      StringBinOp op)
   {
-  case StringUnOp::LENGTH:
-    intBuilder.Finish(&result);
-    break;
-  case StringUnOp::TO_LOWER:
-  case StringUnOp::TO_UPPER:
-    strBuilder.Finish(&result);
-    break;
+    auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
+    arrow::BooleanBuilder builder; // all three ops always return boolean
+
+    for (int64_t i = 0; i < flat->length(); i++)
+    {
+      if (flat->IsNull(i))
+      {
+        builder.AppendNull();
+        continue;
+      }
+      std::string s(flat->Value(i));
+      switch (op)
+      {
+      case StringBinOp::CONTAINS:
+        builder.Append(s.find(arg) != std::string::npos);
+        break;
+      case StringBinOp::STARTS_WITH:
+        builder.Append(s.rfind(arg, 0) == 0);
+        break;
+      case StringBinOp::ENDS_WITH:
+        builder.Append(
+            s.size() >= arg.size() &&
+            s.compare(s.size() - arg.size(), arg.size(), arg) == 0);
+        break;
+      }
+    }
+
+    std::shared_ptr<arrow::Array> result;
+    builder.Finish(&result);
+    return toChunked(result);
   }
-  return toChunked(result);
-}
 
-std::shared_ptr<arrow::ChunkedArray> applyStringBinOp(
-    const std::shared_ptr<arrow::ChunkedArray> &arr,
-    const std::string &arg,
-    StringBinOp op)
-{
-  auto flat = std::static_pointer_cast<arrow::StringArray>(flatten(arr));
-  arrow::BooleanBuilder builder; // all three ops always return boolean
-
-  for (int64_t i = 0; i < flat->length(); i++)
+  template <DataType T>
+  struct MaskImpl
   {
-    if (flat->IsNull(i))
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::Array> &arr,
+        const std::shared_ptr<arrow::BooleanArray> &mask)
     {
-      builder.AppendNull();
-      continue;
-    }
-    std::string s(flat->Value(i));
-    switch (op)
-    {
-    case StringBinOp::CONTAINS:
-      builder.Append(s.find(arg) != std::string::npos);
-      break;
-    case StringBinOp::STARTS_WITH:
-      builder.Append(s.rfind(arg, 0) == 0);
-      break;
-    case StringBinOp::ENDS_WITH:
-      builder.Append(
-          s.size() >= arg.size() &&
-          s.compare(s.size() - arg.size(), arg.size(), arg) == 0);
-      break;
-    }
-  }
+      using ArrType = typename TypeTraits<T>::ArrayType;
+      using Builder = typename TypeTraits<T>::BuilderType;
 
-  std::shared_ptr<arrow::Array> result;
-  builder.Finish(&result);
-  return toChunked(result);
-}
+      auto typed = std::static_pointer_cast<ArrType>(arr);
+      Builder builder;
 
-template <DataType T>
-struct MaskImpl
-{
-  std::shared_ptr<arrow::ChunkedArray> operator()(
+      for (int64_t i = 0; i < typed->length(); i++)
+      {
+        // skip rows where mask is null or false
+        if (mask->IsNull(i) || !mask->Value(i))
+          continue;
+        if (typed->IsNull(i))
+          builder.AppendNull();
+        else
+          builder.Append(typed->Value(i));
+      }
+
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
+    }
+  };
+
+  std::shared_ptr<arrow::ChunkedArray> applyBooleanMask(
       const std::shared_ptr<arrow::Array> &arr,
-      const std::shared_ptr<arrow::BooleanArray> &mask)
+      const std::shared_ptr<arrow::BooleanArray> &mask,
+      DataType type)
   {
-    using ArrType = typename TypeTraits<T>::ArrayType;
-    using Builder = typename TypeTraits<T>::BuilderType;
 
-    auto typed = std::static_pointer_cast<ArrType>(arr);
-    Builder builder;
-
-    for (int64_t i = 0; i < typed->length(); i++)
+    // String and Boolean need separate handling
+    // since dispatchNumeric only covers numeric types
+    if (type == DataType::STRING)
     {
-      // skip rows where mask is null or false
-      if (mask->IsNull(i) || !mask->Value(i))
-        continue;
-      if (typed->IsNull(i))
-        builder.AppendNull();
-      else
-        builder.Append(typed->Value(i));
+      auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
+      arrow::StringBuilder builder;
+      for (int64_t i = 0; i < typed->length(); i++)
+      {
+        if (mask->IsNull(i) || !mask->Value(i))
+          continue;
+        if (typed->IsNull(i))
+          builder.AppendNull();
+        else
+          builder.Append(std::string(typed->Value(i)));
+      }
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
     }
 
-    std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
-    return toChunked(result);
-  }
-};
-
-std::shared_ptr<arrow::ChunkedArray> applyBooleanMask(
-    const std::shared_ptr<arrow::Array> &arr,
-    const std::shared_ptr<arrow::BooleanArray> &mask,
-    DataType type)
-{
-
-  // String and Boolean need separate handling
-  // since dispatchNumeric only covers numeric types
-  if (type == DataType::STRING)
-  {
-    auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
-    arrow::StringBuilder builder;
-    for (int64_t i = 0; i < typed->length(); i++)
+    if (type == DataType::BOOLEAN)
     {
-      if (mask->IsNull(i) || !mask->Value(i))
-        continue;
-      if (typed->IsNull(i))
-        builder.AppendNull();
-      else
-        builder.Append(std::string(typed->Value(i)));
+      auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
+      arrow::BooleanBuilder builder;
+      for (int64_t i = 0; i < typed->length(); i++)
+      {
+        if (mask->IsNull(i) || !mask->Value(i))
+          continue;
+        if (typed->IsNull(i))
+          builder.AppendNull();
+        else
+          builder.Append(typed->Value(i));
+      }
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
     }
-    std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
-    return toChunked(result);
+
+    // Numeric types — dispatch via TypeTraits
+    return dispatchNumeric<MaskImpl>(type, arr, mask);
   }
 
-  if (type == DataType::BOOLEAN)
+  RowValue extractRowValue(
+      const std::shared_ptr<arrow::Array> &arr,
+      int64_t row, DataType type)
   {
-    auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
-    arrow::BooleanBuilder builder;
-    for (int64_t i = 0; i < typed->length(); i++)
+    if (arr->IsNull(row))
+      return std::string("__null__");
+    switch (type)
     {
-      if (mask->IsNull(i) || !mask->Value(i))
-        continue;
-      if (typed->IsNull(i))
-        builder.AppendNull();
-      else
-        builder.Append(typed->Value(i));
+    case DataType::INT32:
+      return std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row);
+    case DataType::INT64:
+      return std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row);
+    case DataType::FLOAT32:
+      return std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row);
+    case DataType::FLOAT64:
+      return std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row);
+    case DataType::STRING:
+      return std::string(
+          std::static_pointer_cast<arrow::StringArray>(arr)->Value(row));
+    case DataType::BOOLEAN:
+      return std::static_pointer_cast<arrow::BooleanArray>(arr)->Value(row);
     }
-    std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
-    return toChunked(result);
   }
 
-  // Numeric types — dispatch via TypeTraits
-  return dispatchNumeric<MaskImpl>(type, arr, mask);
-}
-
-RowValue extractRowValue(
-    const std::shared_ptr<arrow::Array> &arr,
-    int64_t row, DataType type)
-{
-  if (arr->IsNull(row))
-    return std::string("__null__");
-  switch (type)
+  int compareRowValues(const RowValue &a, const RowValue &b)
   {
-  case DataType::INT32:
-    return std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row);
-  case DataType::INT64:
-    return std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row);
-  case DataType::FLOAT32:
-    return std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row);
-  case DataType::FLOAT64:
-    return std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row);
-  case DataType::STRING:
-    return std::string(
-        std::static_pointer_cast<arrow::StringArray>(arr)->Value(row));
-  case DataType::BOOLEAN:
-    return std::static_pointer_cast<arrow::BooleanArray>(arr)->Value(row);
-  }
-}
-
-int compareRowValues(const RowValue &a, const RowValue &b)
-{
-  return std::visit([](const auto &x, const auto &y) -> int
-                    {
-                      if constexpr (std::is_same_v<decltype(x), decltype(y)>)
+    return std::visit([](const auto &x, const auto &y) -> int
                       {
-                        if (x < y)
-                          return -1;
-                        if (x > y)
-                          return 1;
-                        return 0;
-                      }
-                      return 0; // incompatible types — treat as equal
-                    },
-                    a, b);
-}
+                        if constexpr (std::is_same_v<decltype(x), decltype(y)>)
+                        {
+                          if (x < y)
+                            return -1;
+                          if (x > y)
+                            return 1;
+                          return 0;
+                        }
+                        return 0; // incompatible types — treat as equal
+                      },
+                      a, b);
+  }
 
-template <DataType T>
-struct ReorderImpl
-{
-  std::shared_ptr<arrow::ChunkedArray> operator()(
+  template <DataType T>
+  struct ReorderImpl
+  {
+    std::shared_ptr<arrow::ChunkedArray> operator()(
+        const std::shared_ptr<arrow::Array> &arr,
+        const std::vector<int64_t> &indices)
+    {
+      using ArrType = typename TypeTraits<T>::ArrayType;
+      using Builder = typename TypeTraits<T>::BuilderType;
+
+      auto typed = std::static_pointer_cast<ArrType>(arr);
+      Builder builder;
+
+      for (int64_t idx : indices)
+      {
+        if (typed->IsNull(idx))
+          builder.AppendNull();
+        else
+          builder.Append(typed->Value(idx));
+      }
+
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
+    }
+  };
+
+  std::shared_ptr<arrow::ChunkedArray> reorderByIndices(
       const std::shared_ptr<arrow::Array> &arr,
-      const std::vector<int64_t> &indices)
+      const std::vector<int64_t> &indices,
+      DataType type)
   {
-    using ArrType = typename TypeTraits<T>::ArrayType;
-    using Builder = typename TypeTraits<T>::BuilderType;
-
-    auto typed = std::static_pointer_cast<ArrType>(arr);
-    Builder builder;
-
-    for (int64_t idx : indices)
+    if (type == DataType::STRING)
     {
-      if (typed->IsNull(idx))
-        builder.AppendNull();
-      else
-        builder.Append(typed->Value(idx));
+      auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
+      arrow::StringBuilder builder;
+      for (int64_t idx : indices)
+      {
+        if (typed->IsNull(idx))
+          builder.AppendNull();
+        else
+          builder.Append(std::string(typed->Value(idx)));
+      }
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
     }
 
-    std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
-    return toChunked(result);
-  }
-};
-
-std::shared_ptr<arrow::ChunkedArray> reorderByIndices(
-    const std::shared_ptr<arrow::Array> &arr,
-    const std::vector<int64_t> &indices,
-    DataType type)
-{
-  if (type == DataType::STRING)
-  {
-    auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
-    arrow::StringBuilder builder;
-    for (int64_t idx : indices)
+    if (type == DataType::BOOLEAN)
     {
-      if (typed->IsNull(idx))
-        builder.AppendNull();
-      else
-        builder.Append(std::string(typed->Value(idx)));
+      auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
+      arrow::BooleanBuilder builder;
+      for (int64_t idx : indices)
+      {
+        if (typed->IsNull(idx))
+          builder.AppendNull();
+        else
+          builder.Append(typed->Value(idx));
+      }
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
     }
-    std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
-    return toChunked(result);
-  }
 
-  if (type == DataType::BOOLEAN)
-  {
-    auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
-    arrow::BooleanBuilder builder;
-    for (int64_t idx : indices)
-    {
-      if (typed->IsNull(idx))
-        builder.AppendNull();
-      else
-        builder.Append(typed->Value(idx));
-    }
-    std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
-    return toChunked(result);
+    return dispatchNumeric<ReorderImpl>(type, arr, indices);
   }
-
-  return dispatchNumeric<ReorderImpl>(type, arr, indices);
 }

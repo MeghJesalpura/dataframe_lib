@@ -6,7 +6,9 @@ find_package(Arrow REQUIRED)
 find_package(ArrowDataset REQUIRED)
 find_package(Parquet REQUIRED)
 
-add_executable(test_expr tests/test_expr.cpp
+set(CMAKE_CXX_CLANG_TIDY clang-tidy;-checks=modernize-*,performance-*,readability-*)
+
+add_library(dataframelib
     include/dataframelib/Types.h
     include/dataframelib/expression/expr.h
     include/dataframelib/expression/colExpr.h
@@ -19,7 +21,6 @@ add_executable(test_expr tests/test_expr.cpp
     include/dataframelib/operations/strBinOpExpr.h
     include/dataframelib/operations/strUnOpExpr.h
     include/dataframelib/operations/aggOpExpr.h
-    src/expression/expr.cpp
     include/dataframelib/expression/exprPtr.h
     src/expression/exprPtr.cpp
     include/dataframelib/utils/arrayUtils.h
@@ -35,13 +36,18 @@ add_executable(test_expr tests/test_expr.cpp
     include/dataframelib/groupByObj.h
     include/dataframelib/QueryExecutor.h
     src/QueryExecutor.cpp
-    data.parquet
-    include/dataframelib/utils/graphRender.h
-    include/dataframelib/utils/overloaded.h)
-target_link_libraries(test_expr PRIVATE 
+    include/dataframelib/utils/graphRender.h)
+
+add_executable(test_expr tests/test_expr.cpp)
+
+target_link_libraries(test_expr PRIVATE dataframelib)
+
+target_include_directories(dataframelib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries( dataframelib PUBLIC
 Arrow::arrow_shared
 ArrowDataset::arrow_dataset_shared
 Parquet::parquet_shared)
 
-target_include_directories(test_expr PRIVATE include/)
-set(CMAKE_CXX_CLANG_TIDY clang-tidy;-checks=modernize-*,performance-*,readability-*)

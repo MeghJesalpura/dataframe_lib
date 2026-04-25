@@ -6,15 +6,17 @@
 #include <iostream>
 #include "../include/dataframelib/lazy/nodes.h"
 
-// Forward declaration — needed because lambda calls writeDot recursively
-int writeDot(std::ostream &out, const planNode &node, int &nodeId);
-
-int writeDot(std::ostream &out, const planNode &node, int &nodeId)
+namespace dataframelib
 {
-  int myId = nodeId++;
+    // Forward declaration — needed because lambda calls writeDot recursively
+    int writeDot(std::ostream &out, const planNode &node, int &nodeId);
 
-  std::visit([&out, &nodeId, myId](const auto &n) -> void // capture all needed vars
-             {
+    int writeDot(std::ostream &out, const planNode &node, int &nodeId)
+    {
+        int myId = nodeId++;
+
+        std::visit([&out, &nodeId, myId](const auto &n) -> void // capture all needed vars
+                   {
         using NodeType = std::decay_t<decltype(n)>;
 
         if constexpr (std::is_same_v<NodeType, ScanNode>)
@@ -90,7 +92,7 @@ int writeDot(std::ostream &out, const planNode &node, int &nodeId)
             out << "  node" << myId << " [label=\"Unknown\"];\n";
         } }, node);
 
-  return myId;
+        return myId;
+    }
 }
-
 #endif

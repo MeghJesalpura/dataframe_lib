@@ -32,3 +32,5 @@ Makefile
 
 #macOS
 .DS_Store
+
+tester/

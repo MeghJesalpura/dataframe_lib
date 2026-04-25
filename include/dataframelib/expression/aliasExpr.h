@@ -4,33 +4,37 @@
 #include "../Types.h"
 #include "expr.h"
 
-class AliasExpr : public Expr
+namespace dataframelib
 {
-  ExprPtr inner_;
-  std::string alias_;
-
-public:
-  AliasExpr(ExprPtr inner, std::string alias)
-      : inner_(std::move(inner)), alias_(std::move(alias)) {}
-
-  std::shared_ptr<arrow::ChunkedArray> evaluate(
-      const std::shared_ptr<arrow::Table> &table) const override
+  class AliasExpr : public Expr
   {
-    // Just delegates to inner - renaming happens at DataFrame level
-    return inner_->evaluate(table);
-  }
+    ExprPtr inner_;
+    std::string alias_;
 
-  DataType resultType(const std::shared_ptr<arrow::Schema> &schema) const override
-  {
-    return inner_->resultType(schema);
-  }
+  public:
+    AliasExpr(ExprPtr inner, std::string alias)
+        : inner_(std::move(inner)), alias_(std::move(alias)) {}
 
-  const std::string &getAlias() const { return alias_; }
+    std::shared_ptr<arrow::ChunkedArray> evaluate(
+        const std::shared_ptr<arrow::Table> &table) const override
+    {
+      // Just delegates to inner - renaming happens at DataFrame level
+      return inner_->evaluate(table);
+    }
 
-  std::string toString() const override
-  {
-    return inner_->toString() + ".alias(" + alias_ + ")";
-  }
-};
+    DataType resultType(const std::shared_ptr<arrow::Schema> &schema) const override
+    {
+      return inner_->resultType(schema);
+    }
+
+    const std::string &getAlias() const { return alias_; }
+
+    std::string toString() const override
+    {
+      return inner_->toString() + ".alias(" + alias_ + ")";
+    }
+  };
+
+} // namespace dataframelib
 
 #endif

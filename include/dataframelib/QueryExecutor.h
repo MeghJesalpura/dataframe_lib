@@ -5,10 +5,12 @@
 #include "EagerDataFrame.h"
 #include "lazy/nodes.h"
 
-class QueryExecutor
+namespace dataframelib
 {
-public:
-  static EagerDataFrame execute(const planNode &node);
-};
-
+  class QueryExecutor
+  {
+  public:
+    static EagerDataFrame execute(const planNode &node);
+  };
+}
 #endif

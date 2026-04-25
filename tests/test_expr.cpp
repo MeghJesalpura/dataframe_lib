@@ -10,6 +10,8 @@
 #include "../include/dataframelib/groupByObj.h"
 #include "../include/dataframelib/LazyDataFrame.h"
 #include <map>
+
+using namespace dataframelib;
 int main()
 {
     // Build test table manually
