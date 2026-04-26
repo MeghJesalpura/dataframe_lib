@@ -3,6 +3,7 @@
 #include "../Types.h"
 #include <iostream>
 #include <map>
+#include <utility>
 #include <memory>
 #include "arrow/api.h"
 #include "../expression/exprPtr.h"
@@ -53,7 +54,7 @@ namespace dataframelib
 
   struct AggNode
   {
-    std::map<std::string, std::string> agg_map;
+    std::vector<std::pair<std::string, std::string>> agg_map;
     std::shared_ptr<planNode> child;
   };
 

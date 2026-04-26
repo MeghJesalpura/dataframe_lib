@@ -92,6 +92,11 @@ namespace dataframelib
   {
     return std::make_shared<BinOpExpr>(std::move(l), lit(r), BinaryOp::SUB);
   }
-  // col("a") + lit(3) has not been implemented here
+  // ExprPtr op ExprPtr (two-column arithmetic)
+  inline ExprPtr operator+(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::ADD); }
+  inline ExprPtr operator-(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::SUB); }
+  inline ExprPtr operator*(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::MUL); }
+  inline ExprPtr operator/(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::DIV); }
+  inline ExprPtr operator%(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::MOD); }
 }
 #endif

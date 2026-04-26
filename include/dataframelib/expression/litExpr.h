@@ -102,5 +102,10 @@ namespace dataframelib
     return std::make_shared<LitExpr>(value);
   }
 
+  inline ExprPtr lit(const char *value)
+  {
+    return std::make_shared<LitExpr>(std::string(value));
+  }
+
 } // namespace dataframelib
 #endif

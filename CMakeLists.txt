@@ -36,7 +36,8 @@ add_library(dataframelib
     include/dataframelib/groupByObj.h
     include/dataframelib/QueryExecutor.h
     src/QueryExecutor.cpp
-    include/dataframelib/utils/graphRender.h)
+    include/dataframelib/utils/graphRender.h
+    src/QueryOptimizer.cpp)
 
 add_executable(test_expr tests/test_expr.cpp)
 

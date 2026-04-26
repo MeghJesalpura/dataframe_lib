@@ -64,7 +64,7 @@ namespace dataframelib
     return EagerDataFrame(table);
   }
 
-  // from_columns
+  // from_columns (map form — unordered)
   EagerDataFrame EagerDataFrame::from_columns(
       const std::map<std::string,
                      std::shared_ptr<arrow::ChunkedArray>> &cols)
@@ -76,6 +76,24 @@ namespace dataframelib
     {
       fields.push_back(arrow::field(name, arr->type()));
       arrays.push_back(arr);
+    }
+
+    auto schema = arrow::schema(fields);
+    auto table = arrow::Table::Make(schema, arrays);
+    return EagerDataFrame(table);
+  }
+
+  // from_columns (ordered pair-vector form — preserves insertion order)
+  EagerDataFrame EagerDataFrame::from_columns(
+      const std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> &cols)
+  {
+    std::vector<std::shared_ptr<arrow::Field>> fields;
+    std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
+
+    for (const auto &[name, arr] : cols)
+    {
+      fields.push_back(arrow::field(name, arr->type()));
+      arrays.push_back(std::make_shared<arrow::ChunkedArray>(arr));
     }
 
     auto schema = arrow::schema(fields);
@@ -324,19 +342,8 @@ namespace dataframelib
   EagerDataFrame EagerDataFrame::join(const EagerDataFrame &other,
                                       const std::vector<std::string> &onColumns, const std::string &how) const
   {
-    // joins to be implemented: inner, left, outer
-    // first write a simple inner join, then extend to other types
-    //  For inner join, we can do a hash-based approach:
-    //  1. Build a hash map from the smaller table (other) using the join keys
-    //  2. Iterate through the larger table (this), probe the hash map for matches, and build the result rows
-    //  Implementing it
-
-    std::map<std::string, std::shared_ptr<arrow::ChunkedArray>> resultColumns;
-    if (table_->num_rows() > other.table()->num_rows())
-    {
-      // swap in this case
-      return other.join(*this, onColumns, how);
-    }
+    if (how != "inner" && how != "left" && how != "right" && how != "outer")
+      throw std::runtime_error("Unsupported join type: " + how);
 
     std::vector<std::shared_ptr<arrow::Array>> flatCols;
     std::vector<DataType> colTypes;
@@ -396,6 +403,7 @@ namespace dataframelib
     }
 
     std::vector<int64_t> leftIndices, rightIndices;
+    std::unordered_set<int64_t> matchedLeftSet, matchedRightSet;
     for (int64_t j = 0; j < other.table()->num_rows(); j++)
     {
       auto key = buildKey(otherFlatCols, otherColTypes, j);
@@ -406,80 +414,192 @@ namespace dataframelib
         {
           leftIndices.push_back(i);  // matched row from smaller table
           rightIndices.push_back(j); // matched row from larger table
+          matchedLeftSet.insert(i);
+          matchedRightSet.insert(j);
         }
       }
     }
 
-    // now got to build it
     if (how == "left" || how == "outer")
     {
-      // For left join, we keep all rows from the left table, and add nulls for non-matching rows
-      std::vector<int64_t> unmatchedLeftIndices;
-      std::unordered_set<int64_t> matchedSet(leftIndices.begin(), leftIndices.end());
       for (int64_t i = 0; i < table_->num_rows(); i++)
       {
-        if (matchedSet.find(i) == matchedSet.end())
+        if (matchedLeftSet.find(i) == matchedLeftSet.end())
         {
-          unmatchedLeftIndices.push_back(i);
+          leftIndices.push_back(i);
+          rightIndices.push_back(-1);
         }
       }
-      for (int64_t idx : unmatchedLeftIndices)
-      {
-        leftIndices.push_back(idx);
-        rightIndices.push_back(-1); // -1 indicates no match
-      }
     }
-    if (how == "outer")
+    if (how == "right" || how == "outer")
     {
-      // For outer join, we also keep unmatched rows from the right table
-      std::vector<int64_t> unmatchedRightIndices;
-      std::unordered_set<int64_t> matchedRightSet(rightIndices.begin(), rightIndices.end());
       for (int64_t j = 0; j < other.table()->num_rows(); j++)
       {
         if (matchedRightSet.find(j) == matchedRightSet.end())
         {
-          unmatchedRightIndices.push_back(j);
+          leftIndices.push_back(-1);
+          rightIndices.push_back(j);
         }
-      }
-      for (int64_t idx : unmatchedRightIndices)
-      {
-        leftIndices.push_back(-1); // -1 indicates no match
-        rightIndices.push_back(idx);
       }
     }
 
+    auto coalesceJoinKey = [&](const std::shared_ptr<arrow::Array> &leftArr,
+                               const std::shared_ptr<arrow::Array> &rightArr,
+                               DataType type) -> std::shared_ptr<arrow::ChunkedArray>
+    {
+      std::shared_ptr<arrow::Array> out;
+      switch (type)
+      {
+      case DataType::INT32:
+      {
+        auto l = std::static_pointer_cast<arrow::Int32Array>(leftArr);
+        auto r = std::static_pointer_cast<arrow::Int32Array>(rightArr);
+        arrow::Int32Builder b;
+        for (size_t k = 0; k < leftIndices.size(); k++)
+        {
+          int64_t li = leftIndices[k], ri = rightIndices[k];
+          if (li >= 0)
+            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          else if (ri >= 0)
+            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          else
+            b.AppendNull();
+        }
+        b.Finish(&out);
+        break;
+      }
+      case DataType::INT64:
+      {
+        auto l = std::static_pointer_cast<arrow::Int64Array>(leftArr);
+        auto r = std::static_pointer_cast<arrow::Int64Array>(rightArr);
+        arrow::Int64Builder b;
+        for (size_t k = 0; k < leftIndices.size(); k++)
+        {
+          int64_t li = leftIndices[k], ri = rightIndices[k];
+          if (li >= 0)
+            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          else if (ri >= 0)
+            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          else
+            b.AppendNull();
+        }
+        b.Finish(&out);
+        break;
+      }
+      case DataType::FLOAT32:
+      {
+        auto l = std::static_pointer_cast<arrow::FloatArray>(leftArr);
+        auto r = std::static_pointer_cast<arrow::FloatArray>(rightArr);
+        arrow::FloatBuilder b;
+        for (size_t k = 0; k < leftIndices.size(); k++)
+        {
+          int64_t li = leftIndices[k], ri = rightIndices[k];
+          if (li >= 0)
+            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          else if (ri >= 0)
+            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          else
+            b.AppendNull();
+        }
+        b.Finish(&out);
+        break;
+      }
+      case DataType::FLOAT64:
+      {
+        auto l = std::static_pointer_cast<arrow::DoubleArray>(leftArr);
+        auto r = std::static_pointer_cast<arrow::DoubleArray>(rightArr);
+        arrow::DoubleBuilder b;
+        for (size_t k = 0; k < leftIndices.size(); k++)
+        {
+          int64_t li = leftIndices[k], ri = rightIndices[k];
+          if (li >= 0)
+            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          else if (ri >= 0)
+            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          else
+            b.AppendNull();
+        }
+        b.Finish(&out);
+        break;
+      }
+      case DataType::STRING:
+      {
+        auto l = std::static_pointer_cast<arrow::StringArray>(leftArr);
+        auto r = std::static_pointer_cast<arrow::StringArray>(rightArr);
+        arrow::StringBuilder b;
+        for (size_t k = 0; k < leftIndices.size(); k++)
+        {
+          int64_t li = leftIndices[k], ri = rightIndices[k];
+          if (li >= 0)
+            l->IsNull(li) ? b.AppendNull() : b.Append(std::string(l->Value(li)));
+          else if (ri >= 0)
+            r->IsNull(ri) ? b.AppendNull() : b.Append(std::string(r->Value(ri)));
+          else
+            b.AppendNull();
+        }
+        b.Finish(&out);
+        break;
+      }
+      case DataType::BOOLEAN:
+      {
+        auto l = std::static_pointer_cast<arrow::BooleanArray>(leftArr);
+        auto r = std::static_pointer_cast<arrow::BooleanArray>(rightArr);
+        arrow::BooleanBuilder b;
+        for (size_t k = 0; k < leftIndices.size(); k++)
+        {
+          int64_t li = leftIndices[k], ri = rightIndices[k];
+          if (li >= 0)
+            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          else if (ri >= 0)
+            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          else
+            b.AppendNull();
+        }
+        b.Finish(&out);
+        break;
+      }
+      }
+      return toChunked(out);
+    };
+
     std::vector<std::shared_ptr<arrow::ChunkedArray>> leftArrays, rightArrays;
+    std::vector<std::shared_ptr<arrow::Field>> allFields;
+
     for (int col = 0; col < table_->num_columns(); col++)
     {
+      auto fieldName = table_->schema()->field(col)->name();
       auto colType = fromArrowType(table_->schema()->field(col)->type());
-      auto flatCol = flatten(table_->column(col));
-      leftArrays.push_back(reorderByIndices(flatCol, leftIndices, colType));
+      if (std::find(onColumns.begin(), onColumns.end(), fieldName) != onColumns.end())
+      {
+        auto leftKey = flatten(table_->column(col));
+        auto rightKeyChunked = other.table()->GetColumnByName(fieldName);
+        if (!rightKeyChunked)
+          throw std::runtime_error("Join column not found: " + fieldName);
+        auto rightKey = flatten(rightKeyChunked);
+        leftArrays.push_back(coalesceJoinKey(leftKey, rightKey, colType));
+      }
+      else
+      {
+        leftArrays.push_back(reorderByIndices(flatten(table_->column(col)), leftIndices, colType));
+      }
+      allFields.push_back(table_->schema()->field(col));
     }
     for (int col = 0; col < other.table()->num_columns(); col++)
     {
+      auto fieldName = other.table()->schema()->field(col)->name();
+      if (std::find(onColumns.begin(), onColumns.end(), fieldName) != onColumns.end())
+        continue; // skip join key — already present from left table
       auto colType = fromArrowType(other.table()->schema()->field(col)->type());
-      auto flatCol = flatten(other.table()->column(col));
-      rightArrays.push_back(reorderByIndices(flatCol, rightIndices, colType));
+      rightArrays.push_back(reorderByIndices(flatten(other.table()->column(col)), rightIndices, colType));
+      std::string outName = fieldName;
+      if (table_->schema()->GetFieldByName(fieldName))
+        outName += "_right";
+      allFields.push_back(arrow::field(outName, other.table()->schema()->field(col)->type()));
     }
+
     std::vector<std::shared_ptr<arrow::ChunkedArray>> allArrays;
-    allArrays.reserve(leftArrays.size() + rightArrays.size());
     allArrays.insert(allArrays.end(), leftArrays.begin(), leftArrays.end());
     allArrays.insert(allArrays.end(), rightArrays.begin(), rightArrays.end());
-
-    std::vector<std::shared_ptr<arrow::Field>> allFields;
-    for (int i = 0; i < table_->num_columns(); i++)
-    {
-      allFields.push_back(table_->schema()->field(i));
-    }
-    for (int i = 0; i < other.table()->num_columns(); i++)
-    {
-      auto fieldName = other.table()->schema()->field(i)->name();
-      if (onColumns.end() != std::find(onColumns.begin(), onColumns.end(), fieldName))
-        continue; // skip join keys from right table to avoid duplicates
-      if (table_->schema()->GetFieldByName(fieldName))
-        fieldName += "_right"; // if same name replacing with suffix
-      allFields.push_back(arrow::field(fieldName, other.table()->schema()->field(i)->type()));
-    }
 
     auto newSchema = arrow::schema(allFields);
     auto newTable = arrow::Table::Make(newSchema, allArrays);
@@ -602,7 +722,7 @@ namespace dataframelib
     }
   }
 
-  EagerDataFrame GroupByObj::aggregate(const std::map<std::string, std::string> &aggMap) const
+  EagerDataFrame GroupByObj::aggregate(const std::vector<std::pair<std::string, std::string>> &aggList) const
   {
     std::vector<std::shared_ptr<arrow::Field>> fields;
     std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
@@ -618,7 +738,7 @@ namespace dataframelib
       arrays.push_back(toChunked(arr));
     }
 
-    for (const auto &[colName, op] : aggMap)
+    for (const auto &[colName, op] : aggList)
     {
       DataType colType = DataType::FLOAT64;
       if (auto it = colTypes_.find(colName); it != colTypes_.end())
@@ -627,9 +747,9 @@ namespace dataframelib
       std::vector<double> results;
       for (const auto &[key, colAccs] : groups_)
       {
-        auto it = colAccs.find(colName);
+        auto it2 = colAccs.find(colName);
         GroupAccumulator defaultAcc;
-        const auto &acc = (it != colAccs.end()) ? it->second : defaultAcc;
+        const auto &acc = (it2 != colAccs.end()) ? it2->second : defaultAcc;
         double result = 0.0;
         if (op == "sum")
           result = acc.sum;
@@ -646,7 +766,7 @@ namespace dataframelib
         results.push_back(result);
       }
       auto arr = buildAggArray(results, colType, op);
-      fields.push_back(arrow::field(colName, aggOutputArrowType(colType, op)));
+      fields.push_back(arrow::field(colName + "_" + op, aggOutputArrowType(colType, op)));
       arrays.push_back(toChunked(arr));
     }
 

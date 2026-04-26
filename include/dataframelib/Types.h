@@ -146,8 +146,11 @@ namespace dataframelib
   inline void assertCompatible(DataType a, DataType b)
   {
     if (isNumeric(a) && isNumeric(b))
-      return; // Numeric types are compatible with each other
-
+      return;
+    if (a == DataType::STRING && b == DataType::STRING)
+      return;
+    if (a == DataType::BOOLEAN && b == DataType::BOOLEAN)
+      return;
     throw std::runtime_error("Incompatible data types: " + std::to_string(static_cast<int>(a)) +
                              " and " + std::to_string(static_cast<int>(b)));
   }

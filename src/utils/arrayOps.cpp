@@ -167,9 +167,54 @@ namespace dataframelib
       const std::shared_ptr<arrow::ChunkedArray> &right,
       DataType type, RelOp op)
   {
-
     auto l = flatten(left);
     auto r = flatten(right);
+
+    if (type == DataType::STRING)
+    {
+      auto ls = std::static_pointer_cast<arrow::StringArray>(l);
+      auto rs = std::static_pointer_cast<arrow::StringArray>(r);
+      arrow::BooleanBuilder builder;
+      for (int64_t i = 0; i < ls->length(); i++)
+      {
+        if (ls->IsNull(i) || rs->IsNull(i))
+        {
+          builder.AppendNull();
+          continue;
+        }
+        std::string lv = ls->GetString(i), rv = rs->GetString(i);
+        bool val;
+        switch (op)
+        {
+        case RelOp::EQ:
+          val = lv == rv;
+          break;
+        case RelOp::NEQ:
+          val = lv != rv;
+          break;
+        case RelOp::LT:
+          val = lv < rv;
+          break;
+        case RelOp::LTE:
+          val = lv <= rv;
+          break;
+        case RelOp::GT:
+          val = lv > rv;
+          break;
+        case RelOp::GTE:
+          val = lv >= rv;
+          break;
+        default:
+          val = false;
+          break;
+        }
+        builder.Append(val);
+      }
+      std::shared_ptr<arrow::Array> result;
+      builder.Finish(&result);
+      return toChunked(result);
+    }
+
     return dispatchNumeric<RelOpImpl>(type, l, r, op);
   }
 
@@ -493,6 +538,11 @@ namespace dataframelib
 
       for (int64_t idx : indices)
       {
+        if (idx < 0)
+        {
+          builder.AppendNull();
+          continue;
+        }
         if (typed->IsNull(idx))
           builder.AppendNull();
         else
@@ -516,6 +566,11 @@ namespace dataframelib
       arrow::StringBuilder builder;
       for (int64_t idx : indices)
       {
+        if (idx < 0)
+        {
+          builder.AppendNull();
+          continue;
+        }
         if (typed->IsNull(idx))
           builder.AppendNull();
         else
@@ -532,6 +587,11 @@ namespace dataframelib
       arrow::BooleanBuilder builder;
       for (int64_t idx : indices)
       {
+        if (idx < 0)
+        {
+          builder.AppendNull();
+          continue;
+        }
         if (typed->IsNull(idx))
           builder.AppendNull();
         else

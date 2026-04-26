@@ -4,13 +4,12 @@
 #include "Types.h"
 #include "expression/expr.h"
 #include "expression/exprPtr.h"
+#include "groupByObj.h"
 #include <map>
 #include <memory>
 
 namespace dataframelib
 {
-  class GroupByObj;
-
   class EagerDataFrame
   {
   public:
@@ -20,10 +19,14 @@ namespace dataframelib
 
     static EagerDataFrame from_columns(
         const std::map<std::string, std::shared_ptr<arrow::ChunkedArray>> &cols);
+    static EagerDataFrame from_columns(
+        const std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>> &cols);
 
     void write_csv(const std::string &path) const;
     void write_parquet(const std::string &path) const;
     std::shared_ptr<arrow::Table> table() const { return table_; };
+    int64_t num_rows() const { return table_->num_rows(); }
+    int num_columns() const { return table_->num_columns(); }
     EagerDataFrame select(const std::vector<std::string> &colNames) const;
     EagerDataFrame filter(const ExprPtr &predicate) const;
     EagerDataFrame with_column(const std::string &name, const ExprPtr &expr) const;

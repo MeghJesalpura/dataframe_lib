@@ -57,7 +57,7 @@ namespace dataframelib
                const std::map<std::string, DataType> &colTypes)
         : groupKeys_(groupKeys), groups_(groups), colTypes_(colTypes) {}
 
-    EagerDataFrame aggregate(const std::map<std::string, std::string> &aggMap) const;
+    EagerDataFrame aggregate(const std::vector<std::pair<std::string, std::string>> &aggList) const;
 
   private:
     std::vector<std::string> groupKeys_;

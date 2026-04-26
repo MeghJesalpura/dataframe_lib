@@ -74,7 +74,7 @@ int main()
     df.group_by({"age"})
         .aggregate({{"salary", "mean"}})
         .print();
-    // expected: age | salary_mean with correct values
+    // expected: age | salary_mean (column named salary_mean) with correct values
 
     // Test 7 - head
     std::cout << "=== head(2) ===\n";

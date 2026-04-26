@@ -43,9 +43,17 @@ namespace dataframelib
     return LazyDataFrame(GroupByNode{.group_columns = groupCols, .child = std::make_shared<planNode>(rootNode_)});
   }
 
-  LazyDataFrame LazyDataFrame::aggregate(const std::map<std::string, std::string> &aggMap) const
+  LazyDataFrame LazyDataFrame::with_column(const std::string &name, const ExprPtr &expr) const
   {
-    return LazyDataFrame(AggNode{.agg_map = aggMap, .child = std::make_shared<planNode>(rootNode_)});
+    return LazyDataFrame(WithColumnNode{
+        .column_name = name,
+        .expr = expr,
+        .child = std::make_shared<planNode>(rootNode_)});
+  }
+
+  LazyDataFrame LazyDataFrame::aggregate(const std::vector<std::pair<std::string, std::string>> &aggList) const
+  {
+    return LazyDataFrame(AggNode{.agg_map = aggList, .child = std::make_shared<planNode>(rootNode_)});
   }
 
   LazyDataFrame LazyDataFrame::join(const LazyDataFrame &other, const std::vector<std::string> &onCols, const std::string &how) const

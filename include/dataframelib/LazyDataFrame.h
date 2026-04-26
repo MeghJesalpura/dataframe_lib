@@ -23,10 +23,9 @@ namespace dataframelib
 
     LazyDataFrame select(const std::vector<std::string> &colNames) const;
     LazyDataFrame filter(const ExprPtr &predicate) const;
-    // with_column eft to be implemented
-    // LazyDataFrame with_column(const std::string &name, const ExprPtr &expr) const;
+    LazyDataFrame with_column(const std::string &name, const ExprPtr &expr) const;
     LazyDataFrame group_by(const std::vector<std::string> &groupCols) const;
-    LazyDataFrame aggregate(const std::map<std::string, std::string> &aggMap) const;
+    LazyDataFrame aggregate(const std::vector<std::pair<std::string, std::string>> &aggList) const;
     LazyDataFrame join(const LazyDataFrame &other, const std::vector<std::string> &onCols, const std::string &how = "inner") const;
     LazyDataFrame sort(const std::vector<std::string> &sortCols, bool ascending = true) const;
     LazyDataFrame head(size_t n) const;

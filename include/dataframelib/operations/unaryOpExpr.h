@@ -26,7 +26,9 @@ namespace dataframelib
 
     DataType resultType(const std::shared_ptr<arrow::Schema> &schema) const override
     {
-      // For ABS, the result type is the same as the operand type
+      if (op_ == UnaryOp::NOT || op_ == UnaryOp::IS_NULL || op_ == UnaryOp::IS_NOT_NULL)
+        return DataType::BOOLEAN;
+      // For ABS, the result type is the same as the operand type.
       return operand_->resultType(schema);
     }
 
