@@ -105,7 +105,7 @@ int main()
     std::cout << "=== lazy execution test ===\n";
     auto df3 = scan_parquet("data.parquet");
     std::cout << "=== lazy execution test - after scan_parquet ===\n";
-    auto result = df3.filter(col("age") > 30)
+    auto result = df3.filter(col("salary") > 30)
                       .select({"name", "salary"})
                       .group_by({"dept"})
                       .aggregate({{"salary", "mean"}});

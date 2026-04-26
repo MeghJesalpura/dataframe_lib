@@ -1,5 +1,6 @@
 #include "../include/dataframelib/LazyDataFrame.h"
 #include "../include/dataframelib/QueryExecutor.h"
+#include "../include/dataframelib/QueryOptimizer.h"
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
@@ -82,10 +83,8 @@ namespace dataframelib
 
   EagerDataFrame LazyDataFrame::collect() const
   {
-    // Ideally we need to optimize the plan - Query optimizer is yet to be implemented
-    // this is where we would execute the plan represented by rootNode_ and return an EagerDataFrame
-    // post order traversal of the DAG
-    return QueryExecutor::execute(rootNode_);
+    planNode optimized = QueryOptimizer::optimize(rootNode_);
+    return QueryExecutor::execute(optimized);
   }
 
   void LazyDataFrame::explain(const std::string &path) const

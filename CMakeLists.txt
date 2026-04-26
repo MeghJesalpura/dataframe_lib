@@ -37,7 +37,8 @@ add_library(dataframelib
     include/dataframelib/QueryExecutor.h
     src/QueryExecutor.cpp
     include/dataframelib/utils/graphRender.h
-    src/QueryOptimizer.cpp)
+    src/QueryOptimizer.cpp
+    include/dataframelib/QueryOptimizer.h)
 
 add_executable(test_expr tests/test_expr.cpp)
 

@@ -339,92 +339,133 @@ namespace dataframelib
     return EagerDataFrame(newTable);
   }
 
+  // Build a compact binary key — raw bytes avoid decimal-string conversion overhead
+  static std::string buildJoinKey(
+      const std::vector<std::shared_ptr<arrow::Array>> &cols,
+      const std::vector<DataType> &types,
+      int64_t row)
+  {
+    std::string key;
+    for (size_t i = 0; i < cols.size(); i++)
+    {
+      if (cols[i]->IsNull(row))
+      {
+        key += '\xff'; // null sentinel byte
+      }
+      else
+      {
+        auto val = extractRowValue(cols[i], row, types[i]);
+        std::visit([&key](const auto &v)
+                   {
+                     using T = std::decay_t<decltype(v)>;
+                     if constexpr (std::is_same_v<T, std::string>)
+                       key += v;
+                     else
+                       key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+                   },
+                   val);
+      }
+      key += '\0'; // column delimiter
+    }
+    return key;
+  }
+
+  // Build hash map from a table's join key columns — key → row indices
+  static std::unordered_map<std::string, std::vector<int64_t>> buildJoinHashMap(
+      const std::shared_ptr<arrow::Table> &table,
+      const std::vector<std::string> &onColumns)
+  {
+    std::vector<std::shared_ptr<arrow::Array>> flatCols;
+    std::vector<DataType> colTypes;
+    for (const auto &colName : onColumns)
+    {
+      auto col = table->GetColumnByName(colName);
+      if (!col)
+        throw std::runtime_error("Join column not found: " + colName);
+      flatCols.push_back(flatten(col));
+      colTypes.push_back(fromArrowType(table->schema()->GetFieldByName(colName)->type()));
+    }
+
+    std::unordered_map<std::string, std::vector<int64_t>> map;
+    map.reserve(table->num_rows());
+    for (int64_t i = 0; i < table->num_rows(); i++)
+      map[buildJoinKey(flatCols, colTypes, i)].push_back(i);
+    return map;
+  }
+
   EagerDataFrame EagerDataFrame::join(const EagerDataFrame &other,
                                       const std::vector<std::string> &onColumns, const std::string &how) const
   {
     if (how != "inner" && how != "left" && how != "right" && how != "outer")
       throw std::runtime_error("Unsupported join type: " + how);
 
-    std::vector<std::shared_ptr<arrow::Array>> flatCols;
-    std::vector<DataType> colTypes;
+    // Always hash the smaller table to reduce memory and improve probe efficiency
+    bool buildIsLeft = (table_->num_rows() <= other.table()->num_rows());
+    const EagerDataFrame &buildDF = buildIsLeft ? *this : other;
+    const EagerDataFrame &probeDF = buildIsLeft ? other : *this;
+
+    auto hashMap = buildJoinHashMap(buildDF.table(), onColumns);
+
+    // Flatten probe table's join columns upfront
+    std::vector<std::shared_ptr<arrow::Array>> probeFlatCols;
+    std::vector<DataType> probeColTypes;
     for (const auto &colName : onColumns)
     {
-      auto col = table_->GetColumnByName(colName);
+      auto col = probeDF.table()->GetColumnByName(colName);
       if (!col)
         throw std::runtime_error("Join column not found: " + colName);
-      flatCols.push_back(flatten(col));
-      colTypes.push_back(fromArrowType(
-          table_->schema()->GetFieldByName(colName)->type()));
-    }
-    // Build a single string key per row — much faster than vector<string>
-    auto buildKey = [&](
-                        const std::vector<std::shared_ptr<arrow::Array>> &cols,
-                        const std::vector<DataType> &types,
-                        int64_t row) -> std::string
-    {
-      std::string key;
-      for (size_t i = 0; i < cols.size(); i++)
-      {
-        if (cols[i]->IsNull(row))
-        {
-          key += "__null__";
-        }
-        else
-        {
-          auto val = extractRowValue(cols[i], row, types[i]);
-          std::visit([&key](const auto &v)
-                     {
-                if constexpr (std::is_same_v<std::decay_t<decltype(v)>, std::string>)
-                    key += v;
-                else
-                    key += std::to_string(v); }, val);
-        }
-        key += '\0'; // null byte delimiter — safe since values won't contain it
-      }
-      return key;
-    };
-    // O(n) build, O(1) average lookup
-    std::unordered_map<std::string, std::vector<int64_t>> hashMap;
-    hashMap.reserve(table_->num_rows()); // pre-allocate
-
-    for (int64_t i = 0; i < table_->num_rows(); i++)
-    {
-      hashMap[buildKey(flatCols, colTypes, i)].push_back(i);
-    }
-    // Pre-flatten other table's join columns too
-    std::vector<std::shared_ptr<arrow::Array>> otherFlatCols;
-    std::vector<DataType> otherColTypes;
-    for (const auto &colName : onColumns)
-    {
-      auto col = other.table()->GetColumnByName(colName);
-      otherFlatCols.push_back(flatten(col));
-      otherColTypes.push_back(fromArrowType(
-          other.table()->schema()->GetFieldByName(colName)->type()));
+      probeFlatCols.push_back(flatten(col));
+      probeColTypes.push_back(fromArrowType(
+          probeDF.table()->schema()->GetFieldByName(colName)->type()));
     }
 
-    std::vector<int64_t> leftIndices, rightIndices;
-    std::unordered_set<int64_t> matchedLeftSet, matchedRightSet;
-    for (int64_t j = 0; j < other.table()->num_rows(); j++)
+    // Probe phase: collect matched (build, probe) index pairs
+    std::vector<int64_t> buildIndices, probeIndices;
+    buildIndices.reserve(std::min(buildDF.table()->num_rows(), probeDF.table()->num_rows()));
+    probeIndices.reserve(buildIndices.capacity());
+
+    std::vector<bool> buildMatched(buildDF.table()->num_rows(), false);
+    std::vector<bool> probeMatched(probeDF.table()->num_rows(), false);
+
+    for (int64_t j = 0; j < probeDF.table()->num_rows(); j++)
     {
-      auto key = buildKey(otherFlatCols, otherColTypes, j);
-      auto it = hashMap.find(key); // O(1) average
+      auto key = buildJoinKey(probeFlatCols, probeColTypes, j);
+      auto it = hashMap.find(key);
       if (it != hashMap.end())
       {
         for (int64_t i : it->second)
         {
-          leftIndices.push_back(i);  // matched row from smaller table
-          rightIndices.push_back(j); // matched row from larger table
-          matchedLeftSet.insert(i);
-          matchedRightSet.insert(j);
+          buildIndices.push_back(i);
+          probeIndices.push_back(j);
+          buildMatched[i] = true;
+          probeMatched[j] = true;
         }
       }
     }
+
+    // Translate (build, probe) → (left, right) based on which side was hashed
+    std::vector<int64_t> leftIndices, rightIndices;
+    if (buildIsLeft)
+    {
+      leftIndices = std::move(buildIndices);
+      rightIndices = std::move(probeIndices);
+    }
+    else
+    {
+      leftIndices = std::move(probeIndices);
+      rightIndices = std::move(buildIndices);
+    }
+
+    // leftMatched[i] = true if row i of *this was part of a match
+    const std::vector<bool> &leftMatched = buildIsLeft ? buildMatched : probeMatched;
+    // rightMatched[j] = true if row j of other was part of a match
+    const std::vector<bool> &rightMatched = buildIsLeft ? probeMatched : buildMatched;
 
     if (how == "left" || how == "outer")
     {
       for (int64_t i = 0; i < table_->num_rows(); i++)
       {
-        if (matchedLeftSet.find(i) == matchedLeftSet.end())
+        if (!leftMatched[i])
         {
           leftIndices.push_back(i);
           rightIndices.push_back(-1);
@@ -435,7 +476,7 @@ namespace dataframelib
     {
       for (int64_t j = 0; j < other.table()->num_rows(); j++)
       {
-        if (matchedRightSet.find(j) == matchedRightSet.end())
+        if (!rightMatched[j])
         {
           leftIndices.push_back(-1);
           rightIndices.push_back(j);
