@@ -7,6 +7,8 @@
 #include "../include/dataframelib/operations/relOpExpr.h"
 #include "../include/dataframelib/operations/binOpExpr.h"
 #include "../include/dataframelib/operations/unaryOpExpr.h"
+#include "../include/dataframelib/expression/litExpr.h"
+#include "../include/dataframelib/operations/boolOpExpr.h"
 #include "../include/dataframelib/groupByObj.h"
 #include "../include/dataframelib/LazyDataFrame.h"
 #include <map>
@@ -105,13 +107,19 @@ int main()
     std::cout << "=== lazy execution test ===\n";
     auto df3 = scan_parquet("data.parquet");
     std::cout << "=== lazy execution test - after scan_parquet ===\n";
-    auto result = df3.filter(col("salary") > 30)
-                      .select({"name", "salary"})
+    auto result = df3.filter(col("salary") > 10 + 20)
+                      .select({"name", "salary", "dept"})
                       .group_by({"dept"})
                       .aggregate({{"salary", "mean"}});
+    // try to print for a join to see if its working correctly or not
+    auto result2 = df3.filter((col("salary") > 30) & (col("salary") > 30))
+                       .select({"name", "salary", "dept"})
+                       .group_by({"dept"})
+                       .aggregate({{"salary", "mean"}});
 
+    auto join_result = result.join(result2, {"dept"}, "inner");
     std::cout << "=== lazy execution test - result of collect() ===\n";
-    result.explain("plan.png"); // dumps the DAG to a file
+    join_result.explain("plan.png"); // dumps the DAG to a file
     auto collected = result.collect();
     std::cout << "=== lazy execution test - after collect() ===\n";
     collected.print();

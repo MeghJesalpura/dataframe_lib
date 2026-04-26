@@ -20,6 +20,10 @@ namespace dataframelib
     RelOpExpr(ExprPtr left, ExprPtr right, RelOp op)
         : left_(std::move(left)), right_(std::move(right)), op_(op) {}
 
+    ExprPtr getLeft() const { return left_; }
+    ExprPtr getRight() const { return right_; }
+    RelOp getOp() const { return op_; }
+
     std::shared_ptr<arrow::ChunkedArray> evaluate(
         const std::shared_ptr<arrow::Table> &table) const override
     {

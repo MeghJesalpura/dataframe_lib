@@ -15,6 +15,9 @@ namespace dataframelib
   public:
     UnaryOpExpr(ExprPtr operand, UnaryOp op) : operand_(std::move(operand)), op_(op) {}
 
+    ExprPtr getOperand() const { return operand_; }
+    UnaryOp getOp() const { return op_; }
+
     std::shared_ptr<arrow::ChunkedArray> evaluate(const std::shared_ptr<arrow::Table> &table) const override
     {
       auto operandArr = operand_->evaluate(table);

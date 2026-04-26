@@ -92,7 +92,23 @@ namespace dataframelib
       return type_;
     }
 
-    std::string toString() const override { return "lit(...)"; }
+    std::string toString() const override
+    {
+      // return something more specific hopefully
+      return "lit(" + std::visit([](auto &&arg) -> std::string
+                                 {
+        using T = std::decay_t<decltype(arg)>;
+    if constexpr (std::is_same_v<T, std::string>) {
+        return "\"" + arg + "\""; // Wrap strings in quotes
+    } 
+    else if constexpr (std::is_same_v<T, bool>) {
+        return arg ? "true" : "false";
+    }
+    else {
+        return std::to_string(arg); // Handles int, float, double, etc.
+    } }, value_) +
+             ")";
+    }
   };
 
   // Factory - handles type deduction automatically

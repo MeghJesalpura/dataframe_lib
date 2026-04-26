@@ -89,6 +89,7 @@ namespace dataframelib
 
   void LazyDataFrame::explain(const std::string &path) const
   {
+    auto optimized = QueryOptimizer::optimize(rootNode_);
     // Step 1 — generate .dot file
     std::string dotPath = path + ".dot";
     std::ofstream out(dotPath);
@@ -98,7 +99,7 @@ namespace dataframelib
     out << "  node [shape=box, style=filled, fillcolor=lightblue];\n";
 
     int nodeId = 0;
-    writeDot(out, rootNode_, nodeId);
+    writeDot(out, optimized, nodeId);
 
     out << "}\n";
     out.close();
