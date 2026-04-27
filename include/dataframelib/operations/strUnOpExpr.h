@@ -26,6 +26,7 @@ namespace dataframelib
       case StringUnOp::TO_UPPER:
         return DataType::STRING;
       }
+      return DataType::STRING;
     }
     std::string toString() const override
     {

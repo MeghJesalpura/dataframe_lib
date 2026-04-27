@@ -7,63 +7,63 @@
 
 namespace dataframelib
 {
-  ExprPtr ExprPtr::abs() const
+  auto ExprPtr::abs() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<UnaryOpExpr>(expr_, UnaryOp::ABS));
   }
-  ExprPtr ExprPtr::is_null() const
+  auto ExprPtr::is_null() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<UnaryOpExpr>(expr_, UnaryOp::IS_NULL));
   }
-  ExprPtr ExprPtr::is_not_null() const
+  auto ExprPtr::is_not_null() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<UnaryOpExpr>(expr_, UnaryOp::IS_NOT_NULL));
   }
-  ExprPtr ExprPtr::alias(const std::string &name) const
+  auto ExprPtr::alias(const std::string &name) const -> ExprPtr
   {
     return ExprPtr(std::make_shared<AliasExpr>(expr_, name));
   }
-  ExprPtr ExprPtr::length() const
+  auto ExprPtr::length() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<StringUnOpExpr>(expr_, StringUnOp::LENGTH));
   }
-  ExprPtr ExprPtr::to_upper() const
+  auto ExprPtr::to_upper() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<StringUnOpExpr>(expr_, StringUnOp::TO_UPPER));
   }
-  ExprPtr ExprPtr::to_lower() const
+  auto ExprPtr::to_lower() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<StringUnOpExpr>(expr_, StringUnOp::TO_LOWER));
   }
-  ExprPtr ExprPtr::contains(const std::string &substr) const
+  auto ExprPtr::contains(const std::string &substr) const -> ExprPtr
   {
     return ExprPtr(std::make_shared<StringBinOpExpr>(expr_, substr, StringBinOp::CONTAINS));
   }
-  ExprPtr ExprPtr::starts_with(const std::string &prefix) const
+  auto ExprPtr::starts_with(const std::string &prefix) const -> ExprPtr
   {
     return ExprPtr(std::make_shared<StringBinOpExpr>(expr_, prefix, StringBinOp::STARTS_WITH));
   }
-  ExprPtr ExprPtr::ends_with(const std::string &suffix) const
+  auto ExprPtr::ends_with(const std::string &suffix) const -> ExprPtr
   {
     return ExprPtr(std::make_shared<StringBinOpExpr>(expr_, suffix, StringBinOp::ENDS_WITH));
   }
-  ExprPtr ExprPtr::sum() const
+  auto ExprPtr::sum() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<AggOpExpr>(AggOp::SUM, expr_));
   }
-  ExprPtr ExprPtr::mean() const
+  auto ExprPtr::mean() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<AggOpExpr>(AggOp::MEAN, expr_));
   }
-  ExprPtr ExprPtr::count() const
+  auto ExprPtr::count() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<AggOpExpr>(AggOp::COUNT, expr_));
   }
-  ExprPtr ExprPtr::min() const
+  auto ExprPtr::min() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<AggOpExpr>(AggOp::MIN, expr_));
   }
-  ExprPtr ExprPtr::max() const
+  auto ExprPtr::max() const -> ExprPtr
   {
     return ExprPtr(std::make_shared<AggOpExpr>(AggOp::MAX, expr_));
   }

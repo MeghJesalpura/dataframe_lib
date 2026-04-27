@@ -38,12 +38,13 @@ namespace dataframelib
       case AggOp::COUNT:
       {
         arrow::Int64Builder builder;
-        builder.Append(computeCount(arr));
+        (void)builder.Append(computeCount(arr));
         std::shared_ptr<arrow::Array> result;
-        builder.Finish(&result);
+        (void)builder.Finish(&result);
         return toChunked(result);
       }
       }
+      throw std::runtime_error("Unsupported aggregation operation");
     }
 
     DataType resultType(const std::shared_ptr<arrow::Schema> &schema) const override
@@ -59,6 +60,7 @@ namespace dataframelib
       case AggOp::MAX:
         return operand_->resultType(schema);
       }
+      throw std::runtime_error("Unsupported aggregation operation");
     }
 
     std::string toString() const override

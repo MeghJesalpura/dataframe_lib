@@ -57,9 +57,9 @@ namespace dataframelib
         {
             auto val = computeSum<T>(arr);
             typename TypeTraits<T>::BuilderType builder;
-            builder.Append(val);
+            (void)builder.Append(val);
             std::shared_ptr<arrow::Array> result;
-            builder.Finish(&result);
+            (void)builder.Finish(&result);
             return toChunked(result);
         }
     };
@@ -72,9 +72,9 @@ namespace dataframelib
         {
             auto val = computeMean<T>(arr);
             typename TypeTraits<T>::BuilderType builder;
-            builder.Append(val);
+            (void)builder.Append(val);
             std::shared_ptr<arrow::Array> result;
-            builder.Finish(&result);
+            (void)builder.Finish(&result);
             return toChunked(result);
         }
     };
@@ -87,9 +87,9 @@ namespace dataframelib
         {
             auto val = computeMin<T>(arr);
             typename TypeTraits<T>::BuilderType builder;
-            builder.Append(val);
+            (void)builder.Append(val);
             std::shared_ptr<arrow::Array> result;
-            builder.Finish(&result);
+            (void)builder.Finish(&result);
             return toChunked(result);
         }
     };
@@ -102,9 +102,9 @@ namespace dataframelib
         {
             auto val = computeMax<T>(arr);
             typename TypeTraits<T>::BuilderType builder;
-            builder.Append(val);
+            (void)builder.Append(val);
             std::shared_ptr<arrow::Array> result;
-            builder.Finish(&result);
+            (void)builder.Finish(&result);
             return toChunked(result);
         }
     };

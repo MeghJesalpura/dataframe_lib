@@ -33,7 +33,6 @@ namespace dataframelib
 
   // Infer the set of output column names for a plan subtree.
   // Returns an empty set when the schema cannot be determined statically
-  // (e.g. for ScanNode — we would need to read the file).
   static std::unordered_set<std::string> getOutputColumns(const planNode &node)
   {
     return std::visit(
@@ -67,8 +66,6 @@ namespace dataframelib
         },
         node);
   }
-
-  // ── Constant folding & expression simplification helpers ──────────────────
 
   // True when the expression has no col() references and can be evaluated
   // without a real table.
@@ -181,17 +178,17 @@ namespace dataframelib
   }
 
   // Recursively simplify an expression tree:
-  //   • folds pure-constant sub-trees into a single lit()
-  //   • applies boolean identity / zero rules
-  //   • applies arithmetic identity / zero rules
-  //   • eliminates double negation  NOT(NOT(X)) → X
+  // folds pure-constant sub-trees into a single lit()
+  // applies boolean identity / zero rules
+  // applies arithmetic identity / zero rules
+  // eliminates double negation  NOT(NOT(X)) goes to X
   static ExprPtr simplifyExpr(const ExprPtr &expr)
   {
-    // Whole sub-tree is constant → fold it immediately
+    // Whole sub-tree is constant to fold it immediately
     if (isConstExpr(expr))
       return foldConstant(expr);
 
-    // ── BinOpExpr ──────────────────────────────────────────────────────────
+    // BinOpExpr
     if (auto *b = dynamic_cast<const BinOpExpr *>(expr.get().get()))
     {
       ExprPtr l = simplifyExpr(b->getLeft());
@@ -230,13 +227,13 @@ namespace dataframelib
       return std::make_shared<BinOpExpr>(l, r, op);
     }
 
-    // ── RelOpExpr ─────────────────────────────────────────────────────────
+    // RelOpExpr
     // Simplify children; no identity rules apply to relational ops.
     if (auto *r = dynamic_cast<const RelOpExpr *>(expr.get().get()))
       return std::make_shared<RelOpExpr>(
           simplifyExpr(r->getLeft()), simplifyExpr(r->getRight()), r->getOp());
 
-    // ── BoolOpExpr ─────────────────────────────────────────────────────────
+    // BoolOpExpr
     if (auto *b = dynamic_cast<const BoolOpExpr *>(expr.get().get()))
     {
       ExprPtr l = simplifyExpr(b->getLeft());
@@ -268,7 +265,6 @@ namespace dataframelib
       return std::make_shared<BoolOpExpr>(l, r, op);
     }
 
-    // ── UnaryOpExpr ────────────────────────────────────────────────────────
     if (auto *u = dynamic_cast<const UnaryOpExpr *>(expr.get().get()))
     {
       ExprPtr operand = simplifyExpr(u->getOperand());
@@ -288,12 +284,221 @@ namespace dataframelib
     return expr;
   }
 
-  // ── End helpers ───────────────────────────────────────────────────────────
+  // Projection Pushdown
+  // Propagates the set of columns actually needed (requiredCols) downward
+  // through the plan tree so that each node only produces what the nodes above
+  // it will consume.  An empty requiredCols means "all columns needed" (used
+  // at the root where there is no outer constraint).
+
+  static planNode propagateProjection(
+      const planNode &node,
+      const std::unordered_set<std::string> &requiredCols)
+  {
+    return std::visit(
+        [&requiredCols](const auto &n) -> planNode
+        {
+          using T = std::decay_t<decltype(n)>;
+
+          // ScanNode
+          // Leave scan unchanged — read_csv/read_parquet always reads all
+          // columns from disk regardless, so inserting a SelectNode here
+          // only adds an extra in-memory pass with no I/O savings.
+          if constexpr (std::is_same_v<T, ScanNode>)
+            return n;
+
+          // SelectNode
+          // Narrow the column list to the intersection with requiredCols, then
+          // propagate the narrowed list downward.
+          else if constexpr (std::is_same_v<T, SelectNode>)
+          {
+            std::vector<std::string> cols;
+            if (requiredCols.empty())
+            {
+              cols = n.columns; // no outer constraint — keep as-is
+            }
+            else
+            {
+              for (const auto &c : n.columns)
+                if (requiredCols.count(c))
+                  cols.push_back(c);
+              if (cols.empty())
+                cols = n.columns; // safety: never reduce to nothing
+            }
+            std::unordered_set<std::string> neededBelow(cols.begin(), cols.end());
+            return SelectNode{
+                .columns = cols,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*n.child, neededBelow))};
+          }
+
+          // FilterNode
+          // Only add predicate columns to an already-constrained set.
+          // If requiredCols is empty ("all needed"), propagate empty unchanged —
+          // introducing {pred_cols} here would restrict the scan to 1 column.
+          else if constexpr (std::is_same_v<T, FilterNode>)
+          {
+            std::unordered_set<std::string> neededBelow = requiredCols;
+            if (!requiredCols.empty())
+            {
+              auto predCols = extractReferencedColumns(n.predicate.toString());
+              neededBelow.insert(predCols.begin(), predCols.end());
+            }
+            return FilterNode{
+                .predicate = n.predicate,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*n.child, neededBelow))};
+          }
+
+          // SortNode
+          //  Same invariant: only add sort-key columns to an existing constraint.
+          else if constexpr (std::is_same_v<T, SortNode>)
+          {
+            std::unordered_set<std::string> neededBelow = requiredCols;
+            if (!requiredCols.empty())
+              for (const auto &c : n.sort_columns)
+                neededBelow.insert(c);
+            return SortNode{
+                .sort_columns = n.sort_columns,
+                .ascending = n.ascending,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*n.child, neededBelow))};
+          }
+
+          // HeadNode
+          else if constexpr (std::is_same_v<T, HeadNode>)
+          {
+            return HeadNode{
+                .n = n.n,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*n.child, requiredCols))};
+          }
+
+          // WithColumnNode
+          // If the new column is not consumed by anything above, drop the node.
+          // Otherwise, extend the required set with the expression's inputs.
+          else if constexpr (std::is_same_v<T, WithColumnNode>)
+          {
+            if (!requiredCols.empty() && !requiredCols.count(n.column_name))
+              return propagateProjection(*n.child, requiredCols); // column unused
+
+            auto exprCols = extractReferencedColumns(n.expr.toString());
+            std::unordered_set<std::string> neededBelow = requiredCols;
+            if (!requiredCols.empty())
+            {
+              neededBelow.erase(n.column_name); // produced here, not needed from child
+              neededBelow.insert(exprCols.begin(), exprCols.end());
+            }
+            return WithColumnNode{
+                .column_name = n.column_name,
+                .expr = n.expr,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*n.child, neededBelow))};
+          }
+
+          // AggNode
+          // Trim agg_map to aggregations whose output column is in requiredCols,
+          // then propagate source columns + group keys into the GroupByNode.
+          else if constexpr (std::is_same_v<T, AggNode>)
+          {
+            auto *gbn = std::get_if<GroupByNode>(n.child.get());
+            if (!gbn)
+              return n; // malformed plan — leave untouched
+
+            // Trim: keep only agg entries whose output (col_op) is needed above
+            std::vector<std::pair<std::string, std::string>> trimmedAgg;
+            if (requiredCols.empty())
+            {
+              trimmedAgg = n.agg_map;
+            }
+            else
+            {
+              for (const auto &[col, op] : n.agg_map)
+                if (requiredCols.count(col + "_" + op))
+                  trimmedAgg.push_back({col, op});
+              if (trimmedAgg.empty())
+                trimmedAgg = n.agg_map; // safety
+            }
+
+            // Below the GroupBy we need: group keys + source cols for kept aggs
+            std::unordered_set<std::string> neededForData(
+                gbn->group_columns.begin(), gbn->group_columns.end());
+            for (const auto &[col, op] : trimmedAgg)
+              neededForData.insert(col);
+
+            auto newGroupBy = GroupByNode{
+                .group_columns = gbn->group_columns,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*gbn->child, neededForData))};
+
+            return AggNode{
+                .agg_map = trimmedAgg,
+                .child = std::make_shared<planNode>(newGroupBy)};
+          }
+
+          // GroupByNode
+          // Handled inside AggNode above.  In isolation (shouldn't happen in a
+          // valid plan) just propagate the group-key columns downward.
+          else if constexpr (std::is_same_v<T, GroupByNode>)
+          {
+            std::unordered_set<std::string> neededBelow = requiredCols;
+            for (const auto &c : n.group_columns)
+              neededBelow.insert(c);
+            return GroupByNode{
+                .group_columns = n.group_columns,
+                .child = std::make_shared<planNode>(
+                    propagateProjection(*n.child, neededBelow))};
+          }
+
+          // JoinNode
+          // Split requiredCols between the two sides using static schema info.
+          // Join-key columns are always required on both sides.
+          // If either side's schema is unknown, fall back to "all needed".
+          else if constexpr (std::is_same_v<T, JoinNode>)
+          {
+            auto leftSchema = getOutputColumns(*n.left);
+            auto rightSchema = getOutputColumns(*n.right);
+
+            std::unordered_set<std::string> neededLeft(
+                n.on_columns.begin(), n.on_columns.end());
+            std::unordered_set<std::string> neededRight(
+                n.on_columns.begin(), n.on_columns.end());
+
+            if (!requiredCols.empty() && !leftSchema.empty() && !rightSchema.empty())
+            {
+              for (const auto &col : requiredCols)
+              {
+                if (leftSchema.count(col))
+                  neededLeft.insert(col);
+                else if (rightSchema.count(col))
+                  neededRight.insert(col);
+                // col may be a renamed right-side column (col_right) — fall through,
+                // the join key already ensures the right side is queried correctly
+              }
+            }
+            else
+            {
+              neededLeft.clear(); // unknown schema — don't restrict
+              neededRight.clear();
+            }
+
+            return JoinNode{
+                .left = std::make_shared<planNode>(
+                    propagateProjection(*n.left, neededLeft)),
+                .right = std::make_shared<planNode>(
+                    propagateProjection(*n.right, neededRight)),
+                .on_columns = n.on_columns,
+                .how = n.how};
+          }
+
+          return n; // fallback (should not be reached)
+        },
+        node);
+  }
 
   planNode QueryOptimizer::optimize(planNode input)
   {
-    // Step 1 — Recurse into children bottom-up so lower nodes are optimised
-    //          before we apply rules at the current level.
+    // Recurse into children bottom-up so lower nodes are optimised
+    //  before we apply rules at the current level.
     input = std::visit(
         [](auto n) -> planNode
         {
@@ -319,13 +524,7 @@ namespace dataframelib
         },
         input);
 
-    // Step 2 — Apply predicate pushdown rules at the current level.
-    //
-    // Rule 1: Filter → Select     (always safe)
-    // Rule 2: Filter → Sort       (always safe)
-    // Rule 3: Filter → WithColumn (safe when predicate doesn't reference new column)
-    // Rule 4: Filter → Join       (depends on join type and which side owns the columns)
-    //
+    // Apply predicate pushdown rules at the current level.
     // After each rewrite optimize() is called again so the filter can
     // continue propagating further down.
 
@@ -339,7 +538,7 @@ namespace dataframelib
           // compiled when T really is FilterNode.
           if constexpr (std::is_same_v<T, FilterNode>)
           {
-            // ── Rule 1: Filter over Select ──────────────────────────────────
+            // Filter over Select
             if (auto *sel = std::get_if<SelectNode>(n.child.get()))
             {
               auto pushedFilter = FilterNode{.predicate = n.predicate, .child = sel->child};
@@ -348,7 +547,7 @@ namespace dataframelib
               return optimize(newSelect);
             }
 
-            // ── Rule 2: Filter over Sort ────────────────────────────────────
+            // Filter over Sort
             if (auto *srt = std::get_if<SortNode>(n.child.get()))
             {
               auto pushedFilter = FilterNode{.predicate = n.predicate, .child = srt->child};
@@ -358,7 +557,7 @@ namespace dataframelib
               return optimize(newSort);
             }
 
-            // ── Rule 3: Filter over WithColumn ──────────────────────────────
+            // Filter over WithColumn
             // Safe only when the predicate does not reference the new column.
             if (auto *wc = std::get_if<WithColumnNode>(n.child.get()))
             {
@@ -373,13 +572,12 @@ namespace dataframelib
               }
             }
 
-            // ── Rule 4: Filter over Join ────────────────────────────────────
+            // Filter over Join
             // Push only to the side(s) that own all referenced columns.
             //
             // Join-type safety:
             //   inner  — safe to push to either or both sides
             //   left   — only safe to push to RIGHT (left rows always preserved)
-            //   right  — only safe to push to LEFT
             //   outer  — not safe to push to either side
             if (auto *jn = std::get_if<JoinNode>(n.child.get()))
             {
@@ -392,7 +590,7 @@ namespace dataframelib
                 auto leftCols = getOutputColumns(*jn->left);
                 auto rightCols = getOutputColumns(*jn->right);
 
-                // Conservatively: unknown schema (empty set) → cannot push there
+                // Conservatively: unknown schema (empty set) to cannot push there
                 bool allInLeft = !leftCols.empty();
                 bool allInRight = !rightCols.empty();
                 for (const auto &col : predCols)
@@ -452,10 +650,8 @@ namespace dataframelib
           } // end if constexpr FilterNode
 
           // now will implement projection pushdown
-
-          // now will implement constant folding
-
-          // now will implement expression simplification
+          // read only the columns which are useful when going down
+          // basically won't push down select but will try to push down select's column requirements to scan and join and group by and aggregate
 
           // now will implement limit pushdown - try to push head as down as possible similar to filter
           if constexpr (std::is_same_v<T, HeadNode>)
@@ -484,5 +680,10 @@ namespace dataframelib
           return n; // no rule matched
         },
         input);
+  }
+
+  planNode QueryOptimizer::pushdownProjections(const planNode &input)
+  {
+    return propagateProjection(input, {}); // empty = all columns needed at root
   }
 }

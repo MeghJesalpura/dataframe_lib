@@ -134,6 +134,7 @@ namespace dataframelib
     {
       return DataType::INT64; // Promote to INT64 if either is INT64
     }
+    return DataType::INT32; // default: both are INT32
   }
 
   inline bool isNumeric(DataType dt)

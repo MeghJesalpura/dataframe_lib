@@ -34,4 +34,5 @@ Makefile
 .DS_Store
 
 tester/
+tester_old/
 .venv/

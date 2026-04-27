@@ -6,7 +6,6 @@ namespace dataframelib
 {
   EagerDataFrame QueryExecutor::execute(const planNode &node)
   {
-    std::cout << "visited node" << std::endl;
     // this function would use std::visit to recursively execute the plan based on the type of node
     EagerDataFrame result = std::visit(
         [](const auto &n) -> EagerDataFrame
@@ -42,11 +41,6 @@ namespace dataframelib
           {
             const auto &groupByNode = std::get<GroupByNode>(*n.child);
             auto childDF = execute(*groupByNode.child);
-            std::cout << "able to find the child" << std::endl;
-            for (auto &col : groupByNode.group_columns)
-              std::cout << "group by column: " << col << std::endl;
-            // verify whether childDF is correct or not
-            childDF.print();
             return childDF.group_by(groupByNode.group_columns).aggregate(n.agg_map);
           }
           else if constexpr (std::is_same_v<NodeType, JoinNode>)

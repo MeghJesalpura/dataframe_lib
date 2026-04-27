@@ -23,68 +23,22 @@ namespace dataframelib
     std::shared_ptr<arrow::ChunkedArray> evaluate(
         const std::shared_ptr<arrow::Table> &table) const override
     {
-
-      // Build an array of the literal value repeated for every row
       int64_t numRows = table->num_rows();
+      // MakeArrayFromScalar fills the buffer with memset/SIMD — far faster than
+      // a per-element loop for large tables (O(N/64) vs O(N)).
+      std::shared_ptr<arrow::Scalar> scalar;
       switch (type_)
       {
-      case DataType::INT32:
-      {
-        arrow::Int32Builder builder;
-        for (int64_t i = 0; i < numRows; i++)
-          builder.Append(std::get<int32_t>(value_));
-        std::shared_ptr<arrow::Array> arr;
-        builder.Finish(&arr);
-        return std::make_shared<arrow::ChunkedArray>(arr);
+      case DataType::INT32:   scalar = arrow::MakeScalar(std::get<int32_t>(value_)); break;
+      case DataType::INT64:   scalar = arrow::MakeScalar(std::get<int64_t>(value_)); break;
+      case DataType::FLOAT32: scalar = arrow::MakeScalar(std::get<float>(value_)); break;
+      case DataType::FLOAT64: scalar = arrow::MakeScalar(std::get<double>(value_)); break;
+      case DataType::STRING:  scalar = arrow::MakeScalar(std::get<std::string>(value_)); break;
+      case DataType::BOOLEAN: scalar = arrow::MakeScalar(std::get<bool>(value_)); break;
+      default: throw std::runtime_error("Unhandled literal type");
       }
-      case DataType::INT64:
-      {
-        arrow::Int64Builder builder;
-        for (int64_t i = 0; i < numRows; i++)
-          builder.Append(std::get<int64_t>(value_));
-        std::shared_ptr<arrow::Array> arr;
-        builder.Finish(&arr);
-        return std::make_shared<arrow::ChunkedArray>(arr);
-      }
-      case DataType::FLOAT32:
-      {
-        arrow::FloatBuilder builder;
-        for (int64_t i = 0; i < numRows; i++)
-          builder.Append(std::get<float>(value_));
-        std::shared_ptr<arrow::Array> arr;
-        builder.Finish(&arr);
-        return std::make_shared<arrow::ChunkedArray>(arr);
-      }
-      case DataType::FLOAT64:
-      {
-        arrow::DoubleBuilder builder;
-        for (int64_t i = 0; i < numRows; i++)
-          builder.Append(std::get<double>(value_));
-        std::shared_ptr<arrow::Array> arr;
-        builder.Finish(&arr);
-        return std::make_shared<arrow::ChunkedArray>(arr);
-      }
-      case DataType::STRING:
-      {
-        arrow::StringBuilder builder;
-        for (int64_t i = 0; i < numRows; i++)
-          builder.Append(std::get<std::string>(value_));
-        std::shared_ptr<arrow::Array> arr;
-        builder.Finish(&arr);
-        return std::make_shared<arrow::ChunkedArray>(arr);
-      }
-      case DataType::BOOLEAN:
-      {
-        arrow::BooleanBuilder builder;
-        for (int64_t i = 0; i < numRows; i++)
-          builder.Append(std::get<bool>(value_));
-        std::shared_ptr<arrow::Array> arr;
-        builder.Finish(&arr);
-        return std::make_shared<arrow::ChunkedArray>(arr);
-      }
-      default:
-        throw std::runtime_error("Unhandled literal type");
-      }
+      auto arr = arrow::MakeArrayFromScalar(*scalar, numRows).ValueOrDie();
+      return std::make_shared<arrow::ChunkedArray>(arr);
     }
 
     DataType resultType(const std::shared_ptr<arrow::Schema> &) const override

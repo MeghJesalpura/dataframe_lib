@@ -12,6 +12,7 @@
 // read_csv
 namespace dataframelib
 {
+  // To read the csv given a file path
   EagerDataFrame EagerDataFrame::read_csv(const std::string &path)
   {
     // opening the file
@@ -40,7 +41,7 @@ namespace dataframelib
     return EagerDataFrame(tableResult.ValueOrDie());
   }
 
-  // read_parquet
+  // to read a parquet file given a file path
   EagerDataFrame EagerDataFrame::read_parquet(const std::string &path)
   {
     // opening the file
@@ -64,7 +65,7 @@ namespace dataframelib
     return EagerDataFrame(table);
   }
 
-  // from_columns (map form — unordered)
+  // from_columns (map form - unordered)
   EagerDataFrame EagerDataFrame::from_columns(
       const std::map<std::string,
                      std::shared_ptr<arrow::ChunkedArray>> &cols)
@@ -101,7 +102,7 @@ namespace dataframelib
     return EagerDataFrame(table);
   }
 
-  // write_csv
+  // writes a csv to the file
   void EagerDataFrame::write_csv(const std::string &path) const
   {
     // opening output file
@@ -127,15 +128,15 @@ namespace dataframelib
       throw std::runtime_error("Could not write CSV: " + status.ToString());
   }
 
-  // write_parquet
+  // writes to a parquet file
   void EagerDataFrame::write_parquet(const std::string &path) const
   {
-    // Step 1 — open output file
+    // opening output file
     auto fileResult = arrow::io::FileOutputStream::Open(path);
     if (!fileResult.ok())
       throw std::runtime_error("Could not open file for writing: " + path);
 
-    // Step 2 — write with default properties
+    // writing with default properties
     auto status = parquet::arrow::WriteTable(
         *table_,
         arrow::default_memory_pool(),
@@ -146,6 +147,7 @@ namespace dataframelib
       throw std::runtime_error("Could not write Parquet: " + status.ToString());
   }
 
+  // for selecting columns from the dataframe
   EagerDataFrame EagerDataFrame::select(const std::vector<std::string> &colNames) const
   {
     std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
@@ -168,6 +170,7 @@ namespace dataframelib
     return EagerDataFrame(table);
   }
 
+  // for printing the dataframe in a tabular format to the console for debugging
   void EagerDataFrame::print() const
   {
     auto schema = table_->schema();
@@ -201,6 +204,7 @@ namespace dataframelib
     }
   }
 
+  // filter operation given a predicate expression
   EagerDataFrame EagerDataFrame::filter(const ExprPtr &predicate) const
   {
     // evaluate predicate to get boolean mask
@@ -231,6 +235,7 @@ namespace dataframelib
     return EagerDataFrame(newTable);
   }
 
+  // replaces a column with the result of evaluating an expression, or adds a new column if name doesn't exist
   EagerDataFrame EagerDataFrame::with_column(const std::string &name, const ExprPtr &expr) const
   {
     // evaluate expression to get new column data
@@ -264,6 +269,7 @@ namespace dataframelib
     return EagerDataFrame(newTable);
   }
 
+  // returns the first n rows of the dataframe as a new dataframe
   EagerDataFrame EagerDataFrame::head(size_t n) const
   {
     std::vector<std::shared_ptr<arrow::ChunkedArray>> arrays;
@@ -277,52 +283,110 @@ namespace dataframelib
     return EagerDataFrame(newTable);
   }
 
+  // sorts the dataframe by the specified columns in ascending or descending order(default is ascending and only one bool taken for all columns)
   EagerDataFrame EagerDataFrame::sort(
       const std::vector<std::string> &colNames,
       bool ascending) const
   {
     int64_t n = table_->num_rows();
 
-    // flatten all sort columns upfront
-    // store as pair of (flattened array, DataType)
-    std::vector<std::pair<std::shared_ptr<arrow::Array>, DataType>> sortCols;
+    // Pre-extract sort key values into typed vectors so the comparator performs
+    // only simple array index lookups — no variant construction or Arrow API
+    // calls during the O(N log N) comparison phase.
+    struct SortKey
+    {
+      bool isString = false;
+      std::vector<double> numVals; // all numeric types cast to double
+      std::vector<std::string> strVals;
+      std::vector<bool> nulls;
+
+      int compare(int64_t a, int64_t b) const
+      {
+        bool na = nulls[a], nb = nulls[b];
+        if (na && nb)
+          return 0;
+        if (na)
+          return -1;
+        if (nb)
+          return 1;
+        if (!isString)
+          return numVals[a] < numVals[b] ? -1 : numVals[a] > numVals[b] ? 1
+                                                                        : 0;
+        return strVals[a] < strVals[b] ? -1 : strVals[a] > strVals[b] ? 1
+                                                                      : 0;
+      }
+    };
+
+    std::vector<SortKey> sortKeys;
     for (const auto &name : colNames)
     {
       auto col = table_->GetColumnByName(name);
       if (!col)
         throw std::runtime_error("Column not found: " + name);
-      auto type = fromArrowType(
-          table_->schema()->GetFieldByName(name)->type());
-      sortCols.push_back({flatten(col), type});
+      auto arr = flatten(col);
+      auto type = fromArrowType(table_->schema()->GetFieldByName(name)->type());
+
+      SortKey sk;
+      sk.isString = (type == DataType::STRING);
+      sk.nulls.resize(n);
+
+      if (sk.isString)
+      {
+        auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
+        sk.strVals.resize(n);
+        for (int64_t i = 0; i < n; i++)
+        {
+          sk.nulls[i] = typed->IsNull(i);
+          if (!sk.nulls[i])
+            sk.strVals[i] = typed->GetString(i);
+        }
+      }
+      else
+      {
+        sk.numVals.resize(n);
+        for (int64_t i = 0; i < n; i++)
+        {
+          sk.nulls[i] = arr->IsNull(i);
+          if (!sk.nulls[i])
+          {
+            switch (type)
+            {
+            case DataType::INT32:
+              sk.numVals[i] = std::static_pointer_cast<arrow::Int32Array>(arr)->Value(i);
+              break;
+            case DataType::INT64:
+              sk.numVals[i] = static_cast<double>(std::static_pointer_cast<arrow::Int64Array>(arr)->Value(i));
+              break;
+            case DataType::FLOAT32:
+              sk.numVals[i] = std::static_pointer_cast<arrow::FloatArray>(arr)->Value(i);
+              break;
+            case DataType::FLOAT64:
+              sk.numVals[i] = std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(i);
+              break;
+            default:
+              break;
+            }
+          }
+        }
+      }
+      sortKeys.push_back(std::move(sk));
     }
 
     // build index array
     std::vector<int64_t> indices(n);
     std::iota(indices.begin(), indices.end(), 0);
 
-    // prefix sort comparator
-    // Only looks at key i+1 if key i was a tie
-    auto comparator = [&](int64_t rowA, int64_t rowB) -> bool
+    auto comparator = [&sortKeys, ascending](int64_t rowA, int64_t rowB) -> bool
     {
-      for (const auto &[arr, type] : sortCols)
+      for (const auto &key : sortKeys)
       {
-        auto valA = extractRowValue(arr, rowA, type);
-        auto valB = extractRowValue(arr, rowB, type);
-
-        int cmp = compareRowValues(valA, valB);
-
+        int cmp = key.compare(rowA, rowB);
         if (cmp != 0)
-        {
-          // not a tie — decide here, don't look at further keys
           return ascending ? cmp < 0 : cmp > 0;
-        }
-        // tie — fall through to next key
       }
-      // all keys tied — maintain original order (stable)
-      return rowA < rowB;
+      return rowA < rowB; // stable: preserve original order on full tie
     };
 
-    // stable sort preserves original order for full ties
     std::stable_sort(indices.begin(), indices.end(), comparator);
 
     // reorder all columns according to sorted indices
@@ -361,8 +425,7 @@ namespace dataframelib
                      if constexpr (std::is_same_v<T, std::string>)
                        key += v;
                      else
-                       key.append(reinterpret_cast<const char *>(&v), sizeof(v));
-                   },
+                       key.append(reinterpret_cast<const char *>(&v), sizeof(v)); },
                    val);
       }
       key += '\0'; // column delimiter
@@ -370,7 +433,7 @@ namespace dataframelib
     return key;
   }
 
-  // Build hash map from a table's join key columns — key → row indices
+  // Build hash map from a table's join key columns — key to row indices
   static std::unordered_map<std::string, std::vector<int64_t>> buildJoinHashMap(
       const std::shared_ptr<arrow::Table> &table,
       const std::vector<std::string> &onColumns)
@@ -443,7 +506,7 @@ namespace dataframelib
       }
     }
 
-    // Translate (build, probe) → (left, right) based on which side was hashed
+    // Translate (build, probe) to (left, right) based on which side was hashed
     std::vector<int64_t> leftIndices, rightIndices;
     if (buildIsLeft)
     {
@@ -647,53 +710,159 @@ namespace dataframelib
     return EagerDataFrame(newTable);
   }
 
+  // for grouping the dataframe by one or more columns and applying aggregate functions to the groups
   GroupByObj EagerDataFrame::group_by(const std::vector<std::string> &colNames) const
   {
-    std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> groupMap;
-
     for (const auto &k : colNames)
       if (!table_->GetColumnByName(k))
         return GroupByObj(colNames, {}, {});
 
+    // Pre-flatten key columns once — avoids re-fetching inside the row loop
+    std::vector<std::shared_ptr<arrow::Array>> keyArrs;
+    std::vector<DataType> keyTypes;
+    for (const auto &k : colNames)
+    {
+      keyArrs.push_back(flatten(table_->GetColumnByName(k)));
+      keyTypes.push_back(fromArrowType(table_->schema()->GetFieldByName(k)->type()));
+    }
+
+    // Pre-flatten agg columns and record their types
     std::vector<std::string> aggCols;
     std::map<std::string, DataType> colTypes;
+    std::vector<std::shared_ptr<arrow::Array>> aggArrs;
+    std::vector<DataType> aggTypes;
     for (int i = 0; i < table_->num_columns(); i++)
     {
       const std::string &name = table_->schema()->field(i)->name();
-      if (std::find(colNames.begin(), colNames.end(), name) == colNames.end())
+      if (std::find(colNames.begin(), colNames.end(), name) != colNames.end())
+        continue;
+      auto type = fromArrowType(table_->schema()->field(i)->type());
+      if (isNumeric(type))
       {
         aggCols.push_back(name);
-        auto type = fromArrowType(table_->schema()->field(i)->type());
-        if (isNumeric(type))
-          colTypes[name] = type;
+        colTypes[name] = type;
+        aggArrs.push_back(flatten(table_->column(i)));
+        aggTypes.push_back(type);
       }
     }
+
+    // Build a compact binary key for one row — same approach as join hash map.
+    // Using raw bytes avoids GetScalar to ToString heap allocations per row.
+    auto appendKey = [](std::string &key,
+                        const std::shared_ptr<arrow::Array> &arr,
+                        int64_t row, DataType type)
+    {
+      if (arr->IsNull(row))
+      {
+        key += '\xff';
+        key += '\0';
+        return;
+      }
+      switch (type)
+      {
+      case DataType::STRING:
+      {
+        auto v = std::static_pointer_cast<arrow::StringArray>(arr)->GetView(row);
+        key.append(v.data(), v.size());
+        break;
+      }
+      case DataType::INT32:
+      {
+        auto v = std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row);
+        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+        break;
+      }
+      case DataType::INT64:
+      {
+        auto v = std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row);
+        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+        break;
+      }
+      case DataType::FLOAT32:
+      {
+        auto v = std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row);
+        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+        break;
+      }
+      case DataType::FLOAT64:
+      {
+        auto v = std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row);
+        key.append(reinterpret_cast<const char *>(&v), sizeof(v));
+        break;
+      }
+      default:
+        key += '\xff';
+        break;
+      }
+      key += '\0';
+    };
+
+    // String representation of a key value — used only once per new group
+    auto keyToStr = [](const std::shared_ptr<arrow::Array> &arr,
+                       int64_t row, DataType type) -> std::string
+    {
+      if (arr->IsNull(row))
+        return "null";
+      switch (type)
+      {
+      case DataType::STRING:
+      {
+        auto v = std::static_pointer_cast<arrow::StringArray>(arr)->GetView(row);
+        return std::string(v.data(), v.size());
+      }
+      case DataType::INT32:
+        return std::to_string(std::static_pointer_cast<arrow::Int32Array>(arr)->Value(row));
+      case DataType::INT64:
+        return std::to_string(std::static_pointer_cast<arrow::Int64Array>(arr)->Value(row));
+      case DataType::FLOAT32:
+        return std::to_string(std::static_pointer_cast<arrow::FloatArray>(arr)->Value(row));
+      case DataType::FLOAT64:
+        return std::to_string(std::static_pointer_cast<arrow::DoubleArray>(arr)->Value(row));
+      default:
+        return "null";
+      }
+    };
+
+    // Accumulate using unordered_map for O(1) average lookup instead of O(log N)
+    struct GroupEntry
+    {
+      std::vector<std::string> keyStrs;   // output representation — built once per group
+      std::vector<GroupAccumulator> accs; // indexed parallel to aggCols
+    };
+    std::unordered_map<std::string, GroupEntry> fastMap;
+    fastMap.reserve(1024);
+
+    std::string binaryKey;
+    binaryKey.reserve(colNames.size() * 16);
+
     for (int64_t row = 0; row < table_->num_rows(); row++)
     {
-      std::vector<std::string> key;
-      for (const auto &k : colNames)
+      binaryKey.clear();
+      for (size_t ki = 0; ki < keyArrs.size(); ki++)
+        appendKey(binaryKey, keyArrs[ki], row, keyTypes[ki]);
+
+      auto &entry = fastMap[binaryKey];
+      if (entry.accs.empty()) // first time seeing this group
       {
-        auto arr = flatten(table_->GetColumnByName(k));
-        if (arr->IsNull(row))
-          key.push_back("null");
-        else
-        {
-          auto res = arr->GetScalar(row);
-          key.push_back(res.ok() ? res.ValueOrDie()->ToString() : "null");
-        }
+        for (size_t ki = 0; ki < keyArrs.size(); ki++)
+          entry.keyStrs.push_back(keyToStr(keyArrs[ki], row, keyTypes[ki]));
+        entry.accs.resize(aggCols.size());
       }
-      groupMap.emplace(key, std::map<std::string, GroupAccumulator>{});
-      for (const auto &colName : aggCols)
-      {
-        auto arr = flatten(table_->GetColumnByName(colName));
-        if (arr->IsNull(row))
-          continue;
-        auto type = fromArrowType(table_->schema()->GetFieldByName(colName)->type());
-        if (!isNumeric(type))
-          continue;
-        groupMap[key][colName].update(extractAsDouble(arr, row, type));
-      }
+
+      for (size_t ai = 0; ai < aggArrs.size(); ai++)
+        if (!aggArrs[ai]->IsNull(row))
+          entry.accs[ai].update(extractAsDouble(aggArrs[ai], row, aggTypes[ai]));
     }
+
+    // Convert to map<vector<string>, ...> for GroupByObj (K groups — fast)
+    std::map<std::vector<std::string>, std::map<std::string, GroupAccumulator>> groupMap;
+    for (auto &[binKey, entry] : fastMap)
+    {
+      auto &dst = groupMap[entry.keyStrs];
+      for (size_t ai = 0; ai < aggCols.size(); ai++)
+        dst[aggCols[ai]] = std::move(entry.accs[ai]);
+    }
+
     return GroupByObj(colNames, groupMap, colTypes);
   }
 
@@ -763,6 +932,7 @@ namespace dataframelib
     }
   }
 
+  // to aggregate based on the groupings and accumulator results
   EagerDataFrame GroupByObj::aggregate(const std::vector<std::pair<std::string, std::string>> &aggList) const
   {
     std::vector<std::shared_ptr<arrow::Field>> fields;

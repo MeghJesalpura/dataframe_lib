@@ -14,6 +14,7 @@ namespace dataframelib
     auto l = std::static_pointer_cast<ArrType>(left);
     auto r = std::static_pointer_cast<ArrType>(right);
     OutputBuilder builder;
+    builder.Reserve(l->length());
 
     for (int64_t i = 0; i < l->length(); i++)
     {
@@ -41,6 +42,7 @@ namespace dataframelib
     using ArrType = typename TypeTraits<T>::ArrayType;
     auto a = std::static_pointer_cast<ArrType>(arr);
     OutputBuilder builder;
+    builder.Reserve(a->length());
 
     for (int64_t i = 0; i < a->length(); i++)
     {
@@ -175,6 +177,7 @@ namespace dataframelib
       auto ls = std::static_pointer_cast<arrow::StringArray>(l);
       auto rs = std::static_pointer_cast<arrow::StringArray>(r);
       arrow::BooleanBuilder builder;
+      builder.Reserve(ls->length());
       for (int64_t i = 0; i < ls->length(); i++)
       {
         if (ls->IsNull(i) || rs->IsNull(i))
@@ -228,6 +231,7 @@ namespace dataframelib
     auto l = std::static_pointer_cast<arrow::BooleanArray>(flatten(left));
     auto r = std::static_pointer_cast<arrow::BooleanArray>(flatten(right));
     arrow::BooleanBuilder builder;
+    builder.Reserve(l->length());
 
     for (int64_t i = 0; i < l->length(); i++)
     {
@@ -446,6 +450,7 @@ namespace dataframelib
     {
       auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
       arrow::StringBuilder builder;
+      builder.Reserve(typed->length());
       for (int64_t i = 0; i < typed->length(); i++)
       {
         if (mask->IsNull(i) || !mask->Value(i))
@@ -464,6 +469,7 @@ namespace dataframelib
     {
       auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
       arrow::BooleanBuilder builder;
+      builder.Reserve(typed->length());
       for (int64_t i = 0; i < typed->length(); i++)
       {
         if (mask->IsNull(i) || !mask->Value(i))
