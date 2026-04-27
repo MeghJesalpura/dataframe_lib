@@ -1,6 +1,7 @@
 build/
 cmake-build-debug/
 cmake-build-release/
+COP290-A4-CHECKER/
 
 CMakeCache.txt
 CMakeFiles/
@@ -36,4 +37,3 @@ Makefile
 tester/
 tester_old/
 .venv/
-COP290-A4-CHECKER

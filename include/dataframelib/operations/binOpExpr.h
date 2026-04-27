@@ -6,6 +6,7 @@
 #include "../utils/arrayOps.h"
 #include "../expression/exprPtr.h"
 #include "../expression/litExpr.h"
+#include <type_traits>
 namespace dataframelib
 {
   class BinOpExpr : public Expr
@@ -102,5 +103,32 @@ namespace dataframelib
   inline ExprPtr operator*(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::MUL); }
   inline ExprPtr operator/(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::DIV); }
   inline ExprPtr operator%(ExprPtr l, ExprPtr r) { return std::make_shared<BinOpExpr>(std::move(l), std::move(r), BinaryOp::MOD); }
+
+  // scalar op ExprPtr (reverse-order arithmetic)
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator+(T l, ExprPtr r)
+  {
+    return std::make_shared<BinOpExpr>(lit(l), std::move(r), BinaryOp::ADD);
+  }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator-(T l, ExprPtr r)
+  {
+    return std::make_shared<BinOpExpr>(lit(l), std::move(r), BinaryOp::SUB);
+  }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator*(T l, ExprPtr r)
+  {
+    return std::make_shared<BinOpExpr>(lit(l), std::move(r), BinaryOp::MUL);
+  }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator/(T l, ExprPtr r)
+  {
+    return std::make_shared<BinOpExpr>(lit(l), std::move(r), BinaryOp::DIV);
+  }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator%(T l, ExprPtr r)
+  {
+    return std::make_shared<BinOpExpr>(lit(l), std::move(r), BinaryOp::MOD);
+  }
 }
 #endif

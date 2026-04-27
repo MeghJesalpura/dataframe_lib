@@ -7,6 +7,7 @@
 #include "../utils/arrayUtils.h"
 #include "../expression/exprPtr.h"
 #include "../expression/litExpr.h"
+#include <type_traits>
 namespace dataframelib
 {
   class RelOpExpr : public Expr
@@ -52,12 +53,24 @@ namespace dataframelib
       std::string opStr;
       switch (op_)
       {
-      case RelOp::EQ:  opStr = "=="; break;
-      case RelOp::NEQ: opStr = "!="; break;
-      case RelOp::LT:  opStr = "<";  break;
-      case RelOp::LTE: opStr = "<="; break;
-      case RelOp::GT:  opStr = ">";  break;
-      case RelOp::GTE: opStr = ">="; break;
+      case RelOp::EQ:
+        opStr = "==";
+        break;
+      case RelOp::NEQ:
+        opStr = "!=";
+        break;
+      case RelOp::LT:
+        opStr = "<";
+        break;
+      case RelOp::LTE:
+        opStr = "<=";
+        break;
+      case RelOp::GT:
+        opStr = ">";
+        break;
+      case RelOp::GTE:
+        opStr = ">=";
+        break;
       }
       return "(" + left_->toString() + " " + opStr + " " + right_->toString() + ")";
     }
@@ -69,20 +82,34 @@ namespace dataframelib
   template <typename T>
   inline ExprPtr operator!=(ExprPtr l, T r) { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::NEQ); }
   template <typename T>
-  inline ExprPtr operator<(ExprPtr l, T r)  { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::LT); }
+  inline ExprPtr operator<(ExprPtr l, T r) { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::LT); }
   template <typename T>
   inline ExprPtr operator<=(ExprPtr l, T r) { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::LTE); }
   template <typename T>
-  inline ExprPtr operator>(ExprPtr l, T r)  { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::GT); }
+  inline ExprPtr operator>(ExprPtr l, T r) { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::GT); }
   template <typename T>
   inline ExprPtr operator>=(ExprPtr l, T r) { return std::make_shared<RelOpExpr>(std::move(l), lit(r), RelOp::GTE); }
 
   // ExprPtr op ExprPtr (two-column comparisons)
   inline ExprPtr operator==(ExprPtr l, ExprPtr r) { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::EQ); }
   inline ExprPtr operator!=(ExprPtr l, ExprPtr r) { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::NEQ); }
-  inline ExprPtr operator<(ExprPtr l, ExprPtr r)  { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::LT); }
+  inline ExprPtr operator<(ExprPtr l, ExprPtr r) { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::LT); }
   inline ExprPtr operator<=(ExprPtr l, ExprPtr r) { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::LTE); }
-  inline ExprPtr operator>(ExprPtr l, ExprPtr r)  { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::GT); }
+  inline ExprPtr operator>(ExprPtr l, ExprPtr r) { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::GT); }
   inline ExprPtr operator>=(ExprPtr l, ExprPtr r) { return std::make_shared<RelOpExpr>(std::move(l), std::move(r), RelOp::GTE); }
+
+  // scalar op ExprPtr (reverse-order comparisons)
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator==(T l, ExprPtr r) { return std::make_shared<RelOpExpr>(lit(l), std::move(r), RelOp::EQ); }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator!=(T l, ExprPtr r) { return std::make_shared<RelOpExpr>(lit(l), std::move(r), RelOp::NEQ); }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator<(T l, ExprPtr r) { return std::make_shared<RelOpExpr>(lit(l), std::move(r), RelOp::LT); }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator<=(T l, ExprPtr r) { return std::make_shared<RelOpExpr>(lit(l), std::move(r), RelOp::LTE); }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator>(T l, ExprPtr r) { return std::make_shared<RelOpExpr>(lit(l), std::move(r), RelOp::GT); }
+  template <typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, ExprPtr>>>
+  inline ExprPtr operator>=(T l, ExprPtr r) { return std::make_shared<RelOpExpr>(lit(l), std::move(r), RelOp::GTE); }
 } // namespace dataframelib
 #endif
