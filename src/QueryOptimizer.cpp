@@ -293,7 +293,6 @@ namespace dataframelib
   // through the plan tree so that each node only produces what the nodes above
   // it will consume.  An empty requiredCols means "all columns needed" (used
   // at the root where there is no outer constraint).
-
   static planNode propagateProjection(
       const planNode &node,
       const std::unordered_set<std::string> &requiredCols)
@@ -308,7 +307,20 @@ namespace dataframelib
           // columns from disk regardless, so inserting a SelectNode here
           // only adds an extra in-memory pass with no I/O savings.
           if constexpr (std::is_same_v<T, ScanNode>)
+          {
+            // only take the required columns now if we can determine them from the schema (e.g. after a GroupBy)
+            if (!requiredCols.empty())
+            {
+              // Create a new scan node with these columns projected
+              ScanNode newScanNode = n;
+              for (const auto &c : requiredCols)
+              {
+                newScanNode.projected_columns.push_back(c);
+              }
+              return newScanNode;
+            }
             return n;
+          }
 
           // SelectNode
           // Narrow the column list to the intersection with requiredCols, then

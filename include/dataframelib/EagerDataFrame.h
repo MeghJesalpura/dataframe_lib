@@ -15,8 +15,9 @@ namespace dataframelib
   public:
     explicit EagerDataFrame(const std::shared_ptr<arrow::Table> &table) : table_(table) {}
     static EagerDataFrame read_csv(const std::string &path);
+    static EagerDataFrame read_csv(const std::string &path, const std::vector<std::string> &columns);
     static EagerDataFrame read_parquet(const std::string &path);
-
+    static EagerDataFrame read_parquet(const std::string &path, const std::vector<std::string> &columns);
     static EagerDataFrame from_columns(
         const std::map<std::string, std::shared_ptr<arrow::ChunkedArray>> &cols);
     static EagerDataFrame from_columns(

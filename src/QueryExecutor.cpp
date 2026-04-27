@@ -14,9 +14,9 @@ namespace dataframelib
           if constexpr (std::is_same_v<NodeType, ScanNode>)
           {
             if (n.is_csv)
-              return EagerDataFrame::read_csv(n.file_path);
+              return EagerDataFrame::read_csv(n.file_path, n.projected_columns);
             else
-              return EagerDataFrame::read_parquet(n.file_path);
+              return EagerDataFrame::read_parquet(n.file_path, n.projected_columns);
           }
           else if constexpr (std::is_same_v<NodeType, FilterNode>)
           {

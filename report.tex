@@ -29,16 +29,17 @@
 	{\LARGE \textbf{DataFrameLib Implementation}}\\[2.0cm]
 
 	\renewcommand{\arraystretch}{1.5}
-	\begin{tabular}{>{\bfseries}p{5.0cm} p{8.0cm}}
+	\begin{tabular}{>{\bfseries}p{5.0cm} p{12.0cm}}
 		Student Name & Megh Bhavesh Jesalpura \\
 		Entry Number & 2024CS10844 \\
 		Course Code & COP290 \\
 		Assignment & A4 \\
 		Submission Date & \today \\
+        Github Link & \url{https://github.com/MeghJesalpura/cop290_a4_private}
 	\end{tabular}
 
 	\vfill
-	\textit{This report documents the implementation choices, algorithmic details, and correctness arguments for the EagerDataFrame, LazyDataFrame, and QueryOptimizer components based on the submitted codebase.}
+	
 \end{titlepage}
 
 % ----------------------------
@@ -321,95 +322,68 @@ Expected gains from implemented transforms:
 	\item Lower column movement overhead in intermediate nodes via projection pass.
 	\item Earlier cardinality reduction via safe head pushdown.
 \end{itemize}
-Observed benefit magnitude depends on selectivity, width of schema, and operator order in user query chains.
 
-\section{Design Decisions and Implementation Roadmap}
+\subsection{Future Direction: Selective Column Scanning at I/O Layer}
 
-\subsection{Why the Current Design Was Chosen}
-The project intentionally separates logical planning from physical execution. The lazy layer captures query intent using plan nodes and rewrite rules, while eager execution performs concrete Arrow table transformations. This split keeps correctness reasoning cleaner: optimizer rules can be validated at plan level, and performance-critical code remains concentrated in eager operators.
+\textbf{Current limitation.}
+The projection pushdown pass (Transformation D) successfully computes required columns for each operator. However, it does not yet propagate this information back to the \texttt{ScanNode}. Consequently, even when downstream operations need only 3 columns from a table with 100 columns, the scan still reads all 100 columns from disk.
 
-\subsection{Concrete Plan: Physical Projection Pushdown at Scan Level}
-Current projection pushdown computes required columns but does not reduce scan I/O. The following implementation plan is directly aligned with the present code structure.
-
-	extbf{Step 1: Extend scan metadata in plan nodes.}
+\textbf{Why this matters.}
+For large Parquet or CSV files, I/O time dominates execution. A query that selects \texttt{name, age} from a 100-column dataset should read only those 2 columns if no other operation needs additional data. Currently, this optimization is missing because:
 \begin{itemize}[leftmargin=*]
-	\item Add an optional projected-column list in \texttt{ScanNode}.
-	\item Convention: empty/unset means full scan; non-empty means selective scan.
+	\item \texttt{ScanNode} is initialized with a file path and format flag, not a column list.
+	\item \texttt{EagerDataFrame::read\_csv()} and \texttt{read\_parquet()} always read the full table.
+	\item The optimizer's projection pass does not modify \texttt{ScanNode} to include projected columns.
 \end{itemize}
 
-	extbf{Step 2: Write projected columns into scan nodes during optimization.}
-\begin{itemize}[leftmargin=*]
-	\item In projection propagation, when traversal reaches \texttt{ScanNode}, assign required columns to that node.
-	\item Preserve current behavior when requirements are unconstrained.
-\end{itemize}
+\textbf{Implementation strategy for scan-level column pruning.}
+A complete implementation would follow these phases:
 
-	extbf{Step 3: Add selective read overloads in eager I/O.}
-\begin{itemize}[leftmargin=*]
-	\item Add overloaded \texttt{read\_csv(path, columns)} and \texttt{read\_parquet(path, columns)} methods.
-	\item Keep existing no-column overloads as wrappers to maintain API compatibility.
-\end{itemize}
-
-	extbf{Step 4: Implement column-pruned physical readers.}
-\begin{itemize}[leftmargin=*]
-	\item CSV path: use Arrow CSV conversion/read options to include only selected columns.
-	\item Parquet path: map selected names to schema indices and read only those columns.
-	\item Throw explicit errors for missing requested columns.
-\end{itemize}
-
-	extbf{Step 5: Update executor dispatch.}
-\begin{itemize}[leftmargin=*]
-	\item In \texttt{ScanNode} execution, call selective or full reader based on projected-column presence.
-\end{itemize}
-
-	extbf{Step 6: Validation and regression checks.}
-\begin{itemize}[leftmargin=*]
-	\item Verify output equivalence between old and new scan behavior.
-	\item Add tests for join/filter/group-by pipelines to ensure required dependency columns are retained.
-	\item Benchmark memory and runtime on wide tables to quantify gain.
-\end{itemize}
-
-\subsection{Additional Optimization Roadmap for Join, Filter, and Group+Aggregate}
-
-	extbf{A. Join-specific optimizations}
-\begin{itemize}[leftmargin=*]
-	\item Replace binary string key construction with typed key hashing to reduce temporary allocation overhead.
-	\item Add optional Bloom filter pre-check on build-side keys to skip impossible probe rows.
-	\item Introduce partitioned parallel probe phase with final merge of output index lists.
-\end{itemize}
-
-	extbf{B. Filter-specific optimizations}
-\begin{itemize}[leftmargin=*]
-	\item Split conjunctive predicates (AND chains) and push each term independently.
-	\item Add constant-predicate short-circuiting (always true/always false filters).
-	\item Reorder filter terms by estimated cost/selectivity for lower intermediate row counts.
-\end{itemize}
-
-	extbf{C. Group + Aggregate optimizations}
-\begin{itemize}[leftmargin=*]
-	\item Replace generic serialized group keys with typed hash-combine keys.
-	\item Use two-phase parallel aggregation: thread-local maps then merge.
-	\item Delay expensive ordering conversions until final materialization if deterministic order is not required earlier.
-\end{itemize}
-
-\subsection{Planned Order of Execution}
-To maximize benefit while minimizing risk, the intended order is:
 \begin{enumerate}[leftmargin=*]
-	\item Physical scan projection pushdown (highest impact, moderate complexity).
-	\item Predicate split pushdown (strong intermediate-size reduction).
-	\item Typed-key join and group-by internals (CPU and allocation reduction).
-	\item Parallelization of join probe and aggregation (throughput scaling on large inputs).
+	\item \textbf{Extend ScanNode:} Add an optional field \texttt{projected\_columns: std::optional<std::vector<std::string>>} to store the subset of columns to read.
+	
+	\item \textbf{Update projection pass:} Modify \texttt{pushdownProjections()} to propagate required columns down through the DAG. When encountering a \texttt{ScanNode}, if \texttt{requiredCols} is non-empty, assign it to \texttt{ScanNode.projected\_columns}.
+	
+	\item \textbf{Add selective read APIs:} Extend \texttt{EagerDataFrame} with overloads:
+	\begin{itemize}[leftmargin=*]
+		\item \texttt{static EagerDataFrame read\_csv(path, columns)}: CSV-specific selective read.
+		\item \texttt{static EagerDataFrame read\_parquet(path, columns)}: Parquet-specific selective read.
+	\end{itemize}
+	
+	\item \textbf{Implement physical selective reads:}
+	\begin{itemize}[leftmargin=*]
+		\item CSV: Use Arrow's \texttt{arrow::csv::ConvertOptions::include\_columns} to exclude unwanted columns during parsing.
+		\item Parquet: Use Parquet reader's column index API to read only specified columns by index.
+	\end{itemize}
+	
+	\item \textbf{Route execution:} Modify \texttt{QueryExecutor::execute()} so that when a \texttt{ScanNode} has a non-empty \texttt{projected\_columns} field, it invokes the selective read overload instead of the full-table read.
+	
+	\item \textbf{Correctness guards:} Ensure that join keys, filter predicates, sort keys, and group keys are always included in \texttt{projected\_columns} even if they appear in intermediate operations, so no data loss occurs.
 \end{enumerate}
 
-This sequence keeps each stage independently testable and preserves correctness confidence while progressively improving runtime and memory efficiency.
+\textbf{Expected performance impact.}
+Selective column scanning would reduce:
+\begin{itemize}[leftmargin=*]
+	\item \textbf{Disk I/O time:} Only requested columns are read from disk, potentially 10--100\(\times\) improvement for wide tables.
+	\item \textbf{Memory consumption:} Unused columns are never materialized in memory.
+	\item \textbf{Cache pressure:} Smaller data working set improves CPU cache hit rates.
+\end{itemize}
+
+For a query like \texttt{scan\_csv("users.csv").filter(age > 18).select("name", "age")}, selective scanning would skip reading \texttt{address}, \texttt{phone}, \texttt{email}, etc., potentially providing 10\(\times\) I/O reduction for a typical row-oriented file format.
+
+\section{Design Decisions}
+
+\textit{Certain design decisions made by me:}
+\begin{itemize}[leftmargin=*]
+	\item Made graph using GraphWiz/Dot
+    \item Applied optimization in explain() as well
+    \item Implemented the lazydataframe with std::variant similar to a functional programming language(kind of inspired from Ocaml's/Typescript's SUM type)
+\end{itemize}
 
 \section{Conclusions}
 
-This project now has a coherent two-engine architecture: an eager execution core over Arrow tables and a lazy query-planning layer over a variant-based DAG. The eager side is implementation-driven and explicit, with stable ordering in sort, hash-based join, and accumulator-based grouping. The lazy side captures query intent and supports explainability through DOT/Graphviz rendering of optimized plans.
+This project has a coherent two-engine architecture: an eager execution core over Arrow tables and a lazy query-planning layer over a variant-based DAG. The eager side is implementation-driven and explicit, with stable ordering in sort, hash-based join, and accumulator-based grouping. The lazy side captures query intent and supports explainability through DOT/Graphviz rendering of optimized plans.
 
-From an optimization perspective, the current rule set is already meaningful: expression simplification reduces scalar work, predicate/limit pushdown reduce row flow where safe, and projection propagation reduces unnecessary column movement across operators. The correctness guards in join-aware pushdown and with-column dependency checks are critical and are already present in the implementation.
-
-The next natural milestone is to connect logical projection pushdown to physical scan pruning so that CSV/Parquet readers load only required columns. Once that is added, the optimizer can improve both CPU and I/O costs, making the lazy path significantly more scalable on wide datasets.
-
-Overall, the submitted implementation satisfies the intended A4 direction: clear eager semantics, composable lazy DAG construction with \texttt{std::variant}, and optimizer transformations with explicit correctness intent.
+The main things that I realized while doing the assignment was a) Initial direcory structure and understanding problem statement is crucial and b) Maintaining correctness is very important and needs to be proved rigorously.
 
 \end{document}

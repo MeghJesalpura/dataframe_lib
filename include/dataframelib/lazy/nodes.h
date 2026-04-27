@@ -25,6 +25,7 @@ namespace dataframelib
   {
     std::string file_path;
     bool is_csv = true;
+    std::vector<std::string> projected_columns;
   };
 
   struct FilterNode

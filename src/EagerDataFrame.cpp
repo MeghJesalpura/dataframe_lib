@@ -49,6 +49,36 @@ namespace dataframelib
     return EagerDataFrame(tableResult.ValueOrDie());
   }
 
+  // Read only the specified columns from a CSV file.
+  // Arrow's include_columns causes the parser to skip unlisted columns entirely.
+  EagerDataFrame EagerDataFrame::read_csv(const std::string &path, const std::vector<std::string> &columns)
+  {
+    if (columns.empty())
+      return read_csv(path);
+
+    auto fileResult = arrow::io::ReadableFile::Open(path);
+    if (!fileResult.ok())
+      throw std::runtime_error("Could not open file: " + path);
+
+    auto convertOptions = arrow::csv::ConvertOptions::Defaults();
+    convertOptions.include_columns = columns;
+
+    auto readerResult = arrow::csv::TableReader::Make(
+        arrow::io::default_io_context(),
+        fileResult.ValueOrDie(),
+        arrow::csv::ReadOptions::Defaults(),
+        arrow::csv::ParseOptions::Defaults(),
+        convertOptions);
+    if (!readerResult.ok())
+      throw std::runtime_error("Could not create CSV reader: " + readerResult.status().ToString());
+
+    auto tableResult = readerResult.ValueOrDie()->Read();
+    if (!tableResult.ok())
+      throw std::runtime_error("Could not read CSV: " + tableResult.status().ToString());
+
+    return EagerDataFrame(tableResult.ValueOrDie());
+  }
+
   // to read a parquet file given a file path
   EagerDataFrame EagerDataFrame::read_parquet(const std::string &path)
   {
@@ -68,6 +98,44 @@ namespace dataframelib
     if (!tableResult.ok())
       throw std::runtime_error("Could not read Parquet: " +
                                tableResult.status().ToString());
+
+    return EagerDataFrame(tableResult.ValueOrDie());
+  }
+
+  // Read only the specified columns from a Parquet file.
+  // Parquet's columnar format means unlisted column chunks are not read from disk.
+  EagerDataFrame EagerDataFrame::read_parquet(const std::string &path, const std::vector<std::string> &columns)
+  {
+    if (columns.empty())
+      return read_parquet(path);
+
+    auto fileResult = arrow::io::ReadableFile::Open(path);
+    if (!fileResult.ok())
+      throw std::runtime_error("Could not open file: " + path);
+
+    auto readerResult = parquet::arrow::OpenFile(fileResult.ValueOrDie(), arrow::default_memory_pool());
+    if (!readerResult.ok())
+      throw std::runtime_error("Could not create Parquet reader: " + readerResult.status().ToString());
+
+    auto reader = std::move(readerResult.ValueOrDie());
+
+    // Map column names to indices using the Arrow schema
+    std::shared_ptr<arrow::Schema> schema;
+    DF_ARROW_THROW_NOT_OK(reader->GetSchema(&schema));
+
+    std::vector<int> columnIndices;
+    columnIndices.reserve(columns.size());
+    for (const auto &name : columns)
+    {
+      int idx = schema->GetFieldIndex(name);
+      if (idx < 0)
+        throw std::runtime_error("Column not found in Parquet file: " + name);
+      columnIndices.push_back(idx);
+    }
+
+    auto tableResult = reader->ReadTable(columnIndices);
+    if (!tableResult.ok())
+      throw std::runtime_error("Could not read Parquet: " + tableResult.status().ToString());
 
     return EagerDataFrame(tableResult.ValueOrDie());
   }
