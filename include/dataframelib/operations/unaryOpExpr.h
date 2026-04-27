@@ -21,9 +21,16 @@ namespace dataframelib
     std::shared_ptr<arrow::ChunkedArray> evaluate(const std::shared_ptr<arrow::Table> &table) const override
     {
       auto operandArr = operand_->evaluate(table);
-      // Logic to perform the unary operation
-
       DataType type = operand_->resultType(table->schema());
+
+      // Enforce operand type rules before dispatching to kernels.
+      // This checks column type metadata only; null rows are still handled in arrayOps.
+      if (op_ == UnaryOp::ABS && !isNumeric(type))
+        throw std::runtime_error("Type error in abs(): expected numeric operand");
+
+      if (op_ == UnaryOp::NOT && type != DataType::BOOLEAN)
+        throw std::runtime_error("Type error in not(): expected boolean operand");
+
       return applyUnaryOp(operandArr, type, op_);
     }
 
