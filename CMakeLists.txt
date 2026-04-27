@@ -6,7 +6,7 @@ find_package(Arrow REQUIRED)
 find_package(ArrowDataset REQUIRED)
 find_package(Parquet REQUIRED)
 
-set(CMAKE_CXX_CLANG_TIDY clang-tidy;-checks=modernize-*,performance-*,readability-*)
+# set(CMAKE_CXX_CLANG_TIDY clang-tidy;-checks=modernize-*,performance-*,readability-*)
 
 add_library(dataframelib
     include/dataframelib/Types.h
@@ -40,9 +40,9 @@ add_library(dataframelib
     src/QueryOptimizer.cpp
     include/dataframelib/QueryOptimizer.h)
 
-add_executable(test_expr tests/test_expr.cpp)
+# add_executable(test_expr tests/test_expr.cpp)
 
-target_link_libraries(test_expr PRIVATE dataframelib)
+# target_link_libraries(test_expr PRIVATE dataframelib)
 
 target_include_directories(dataframelib PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

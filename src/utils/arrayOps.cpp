@@ -2,6 +2,14 @@
 #include "../../include/dataframelib/utils/opsHelper.h"
 // Generic row iterator to remove abstract out repetitive code
 
+#define DF_ARROW_THROW_NOT_OK(expr)                  \
+  do                                                 \
+  {                                                  \
+    const auto _status_ = (expr);                    \
+    if (!_status_.ok())                              \
+      throw std::runtime_error(_status_.ToString()); \
+  } while (0)
+
 namespace dataframelib
 {
   template <DataType T, typename OutputBuilder, typename Func>
@@ -14,22 +22,22 @@ namespace dataframelib
     auto l = std::static_pointer_cast<ArrType>(left);
     auto r = std::static_pointer_cast<ArrType>(right);
     OutputBuilder builder;
-    builder.Reserve(l->length());
+    DF_ARROW_THROW_NOT_OK(builder.Reserve(l->length()));
 
     for (int64_t i = 0; i < l->length(); i++)
     {
       if (l->IsNull(i) || r->IsNull(i))
       {
-        builder.AppendNull();
+        DF_ARROW_THROW_NOT_OK(builder.AppendNull());
       }
       else
       {
-        builder.Append(fn(l->Value(i), r->Value(i)));
+        DF_ARROW_THROW_NOT_OK(builder.Append(fn(l->Value(i), r->Value(i))));
       }
     }
 
     std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
+    DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
     return result;
   }
 
@@ -42,21 +50,21 @@ namespace dataframelib
     using ArrType = typename TypeTraits<T>::ArrayType;
     auto a = std::static_pointer_cast<ArrType>(arr);
     OutputBuilder builder;
-    builder.Reserve(a->length());
+    DF_ARROW_THROW_NOT_OK(builder.Reserve(a->length()));
 
     for (int64_t i = 0; i < a->length(); i++)
     {
       if (a->IsNull(i))
       {
-        builder.AppendNull();
+        DF_ARROW_THROW_NOT_OK(builder.AppendNull());
       }
       else
       {
-        builder.Append(fn(a->Value(i)));
+        DF_ARROW_THROW_NOT_OK(builder.Append(fn(a->Value(i))));
       }
     }
     std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
+    DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
     return result;
   }
 
@@ -159,6 +167,7 @@ namespace dataframelib
                                                              case RelOp::GTE:
                                                                return a >= b;
                                                              }
+                                                             throw std::runtime_error("Unsupported relational operation");
                                                            });
       return toChunked(result);
     }
@@ -177,12 +186,12 @@ namespace dataframelib
       auto ls = std::static_pointer_cast<arrow::StringArray>(l);
       auto rs = std::static_pointer_cast<arrow::StringArray>(r);
       arrow::BooleanBuilder builder;
-      builder.Reserve(ls->length());
+      DF_ARROW_THROW_NOT_OK(builder.Reserve(ls->length()));
       for (int64_t i = 0; i < ls->length(); i++)
       {
         if (ls->IsNull(i) || rs->IsNull(i))
         {
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
           continue;
         }
         std::string lv = ls->GetString(i), rv = rs->GetString(i);
@@ -211,10 +220,10 @@ namespace dataframelib
           val = false;
           break;
         }
-        builder.Append(val);
+        DF_ARROW_THROW_NOT_OK(builder.Append(val));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
@@ -231,21 +240,21 @@ namespace dataframelib
     auto l = std::static_pointer_cast<arrow::BooleanArray>(flatten(left));
     auto r = std::static_pointer_cast<arrow::BooleanArray>(flatten(right));
     arrow::BooleanBuilder builder;
-    builder.Reserve(l->length());
+    DF_ARROW_THROW_NOT_OK(builder.Reserve(l->length()));
 
     for (int64_t i = 0; i < l->length(); i++)
     {
       if (l->IsNull(i) || r->IsNull(i))
       {
-        builder.AppendNull();
+        DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         continue;
       }
       bool lv = l->Value(i), rv = r->Value(i);
-      builder.Append(op == BoolOp::AND ? lv && rv : lv || rv);
+      DF_ARROW_THROW_NOT_OK(builder.Append(op == BoolOp::AND ? lv && rv : lv || rv));
     }
 
     std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
+    DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
     return toChunked(result);
   }
 
@@ -279,11 +288,11 @@ namespace dataframelib
     {
       arrow::BooleanBuilder builder;
       for (int64_t i = 0; i < flat->length(); i++)
-        builder.Append(op == UnaryOp::IS_NULL
-                           ? flat->IsNull(i)
-                           : flat->IsValid(i));
+        DF_ARROW_THROW_NOT_OK(builder.Append(op == UnaryOp::IS_NULL
+                                                 ? flat->IsNull(i)
+                                                 : flat->IsValid(i)));
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
@@ -296,13 +305,13 @@ namespace dataframelib
       {
         if (a->IsNull(i))
         {
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
           continue;
         }
-        builder.Append(!a->Value(i));
+        DF_ARROW_THROW_NOT_OK(builder.Append(!a->Value(i)));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
@@ -328,14 +337,14 @@ namespace dataframelib
         switch (op)
         {
         case StringUnOp::LENGTH:
-          intBuilder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(intBuilder.AppendNull());
           break;
         case StringUnOp::TO_LOWER:
         case StringUnOp::TO_UPPER:
-          strBuilder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(strBuilder.AppendNull());
           break;
         default:
-          boolBuilder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(boolBuilder.AppendNull());
           break;
         }
         continue;
@@ -344,15 +353,15 @@ namespace dataframelib
       switch (op)
       {
       case StringUnOp::LENGTH:
-        intBuilder.Append(static_cast<int32_t>(s.size()));
+        DF_ARROW_THROW_NOT_OK(intBuilder.Append(static_cast<int32_t>(s.size())));
         break;
       case StringUnOp::TO_LOWER:
         std::transform(s.begin(), s.end(), s.begin(), ::tolower);
-        strBuilder.Append(s);
+        DF_ARROW_THROW_NOT_OK(strBuilder.Append(s));
         break;
       case StringUnOp::TO_UPPER:
         std::transform(s.begin(), s.end(), s.begin(), ::toupper);
-        strBuilder.Append(s);
+        DF_ARROW_THROW_NOT_OK(strBuilder.Append(s));
         break;
       }
     }
@@ -361,11 +370,11 @@ namespace dataframelib
     switch (op)
     {
     case StringUnOp::LENGTH:
-      intBuilder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(intBuilder.Finish(&result));
       break;
     case StringUnOp::TO_LOWER:
     case StringUnOp::TO_UPPER:
-      strBuilder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(strBuilder.Finish(&result));
       break;
     }
     return toChunked(result);
@@ -383,28 +392,28 @@ namespace dataframelib
     {
       if (flat->IsNull(i))
       {
-        builder.AppendNull();
+        DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         continue;
       }
       std::string s(flat->Value(i));
       switch (op)
       {
       case StringBinOp::CONTAINS:
-        builder.Append(s.find(arg) != std::string::npos);
+        DF_ARROW_THROW_NOT_OK(builder.Append(s.find(arg) != std::string::npos));
         break;
       case StringBinOp::STARTS_WITH:
-        builder.Append(s.rfind(arg, 0) == 0);
+        DF_ARROW_THROW_NOT_OK(builder.Append(s.rfind(arg, 0) == 0));
         break;
       case StringBinOp::ENDS_WITH:
-        builder.Append(
+        DF_ARROW_THROW_NOT_OK(builder.Append(
             s.size() >= arg.size() &&
-            s.compare(s.size() - arg.size(), arg.size(), arg) == 0);
+            s.compare(s.size() - arg.size(), arg.size(), arg) == 0));
         break;
       }
     }
 
     std::shared_ptr<arrow::Array> result;
-    builder.Finish(&result);
+    DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
     return toChunked(result);
   }
 
@@ -427,13 +436,13 @@ namespace dataframelib
         if (mask->IsNull(i) || !mask->Value(i))
           continue;
         if (typed->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(typed->Value(i));
+          DF_ARROW_THROW_NOT_OK(builder.Append(typed->Value(i)));
       }
 
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
   };
@@ -450,18 +459,18 @@ namespace dataframelib
     {
       auto typed = std::static_pointer_cast<arrow::StringArray>(arr);
       arrow::StringBuilder builder;
-      builder.Reserve(typed->length());
+      DF_ARROW_THROW_NOT_OK(builder.Reserve(typed->length()));
       for (int64_t i = 0; i < typed->length(); i++)
       {
         if (mask->IsNull(i) || !mask->Value(i))
           continue;
         if (typed->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(std::string(typed->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(std::string(typed->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
@@ -469,18 +478,18 @@ namespace dataframelib
     {
       auto typed = std::static_pointer_cast<arrow::BooleanArray>(arr);
       arrow::BooleanBuilder builder;
-      builder.Reserve(typed->length());
+      DF_ARROW_THROW_NOT_OK(builder.Reserve(typed->length()));
       for (int64_t i = 0; i < typed->length(); i++)
       {
         if (mask->IsNull(i) || !mask->Value(i))
           continue;
         if (typed->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(typed->Value(i));
+          DF_ARROW_THROW_NOT_OK(builder.Append(typed->Value(i)));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
@@ -510,6 +519,7 @@ namespace dataframelib
     case DataType::BOOLEAN:
       return std::static_pointer_cast<arrow::BooleanArray>(arr)->Value(row);
     }
+    throw std::runtime_error("Unsupported data type in extractRowValue");
   }
 
   int compareRowValues(const RowValue &a, const RowValue &b)
@@ -546,17 +556,17 @@ namespace dataframelib
       {
         if (idx < 0)
         {
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
           continue;
         }
         if (typed->IsNull(idx))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(typed->Value(idx));
+          DF_ARROW_THROW_NOT_OK(builder.Append(typed->Value(idx)));
       }
 
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
   };
@@ -574,16 +584,16 @@ namespace dataframelib
       {
         if (idx < 0)
         {
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
           continue;
         }
         if (typed->IsNull(idx))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(std::string(typed->Value(idx)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(std::string(typed->Value(idx))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
@@ -595,19 +605,21 @@ namespace dataframelib
       {
         if (idx < 0)
         {
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
           continue;
         }
         if (typed->IsNull(idx))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(typed->Value(idx));
+          DF_ARROW_THROW_NOT_OK(builder.Append(typed->Value(idx)));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
 
     return dispatchNumeric<ReorderImpl>(type, arr, indices);
   }
 }
+
+#undef DF_ARROW_THROW_NOT_OK

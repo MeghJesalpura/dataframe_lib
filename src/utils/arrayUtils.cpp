@@ -1,6 +1,14 @@
 // ArrayUtils.cpp
 #include "../../include/dataframelib/utils/arrayUtils.h"
 
+#define DF_ARROW_THROW_NOT_OK(expr)                  \
+  do                                                 \
+  {                                                  \
+    const auto _status_ = (expr);                    \
+    if (!_status_.ok())                              \
+      throw std::runtime_error(_status_.ToString()); \
+  } while (0)
+
 namespace dataframelib
 {
   std::shared_ptr<arrow::Array> flatten(
@@ -14,11 +22,11 @@ namespace dataframelib
     // Slow path — concatenate all chunks into one
     // arrow::Concatenate is the only Arrow function used here
     // it's a memory operation, not a compute operation
-    std::shared_ptr<arrow::Array> result;
-    arrow::Concatenate(chunked->chunks(),
-                       arrow::default_memory_pool())
-        .Value(&result);
-    return result;
+    auto concatResult = arrow::Concatenate(chunked->chunks(),
+                                           arrow::default_memory_pool());
+    if (!concatResult.ok())
+      throw std::runtime_error(concatResult.status().ToString());
+    return concatResult.ValueOrDie();
   }
 
   std::shared_ptr<arrow::ChunkedArray> toChunked(
@@ -44,12 +52,12 @@ namespace dataframelib
       for (int64_t i = 0; i < src->length(); i++)
       {
         if (src->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(static_cast<int64_t>(src->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(static_cast<int64_t>(src->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
     if (from == DataType::INT32 && to == DataType::FLOAT32)
@@ -59,12 +67,12 @@ namespace dataframelib
       for (int64_t i = 0; i < src->length(); i++)
       {
         if (src->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(static_cast<float>(src->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(static_cast<float>(src->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
     if (from == DataType::INT32 && to == DataType::FLOAT64)
@@ -74,12 +82,12 @@ namespace dataframelib
       for (int64_t i = 0; i < src->length(); i++)
       {
         if (src->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(static_cast<double>(src->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(static_cast<double>(src->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
     if (from == DataType::INT64 && to == DataType::FLOAT64)
@@ -89,12 +97,12 @@ namespace dataframelib
       for (int64_t i = 0; i < src->length(); i++)
       {
         if (src->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(static_cast<double>(src->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(static_cast<double>(src->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
     if (from == DataType::INT64 && to == DataType::FLOAT32)
@@ -104,12 +112,12 @@ namespace dataframelib
       for (int64_t i = 0; i < src->length(); i++)
       {
         if (src->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(static_cast<float>(src->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(static_cast<float>(src->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
     if (from == DataType::FLOAT32 && to == DataType::FLOAT64)
@@ -119,14 +127,16 @@ namespace dataframelib
       for (int64_t i = 0; i < src->length(); i++)
       {
         if (src->IsNull(i))
-          builder.AppendNull();
+          DF_ARROW_THROW_NOT_OK(builder.AppendNull());
         else
-          builder.Append(static_cast<double>(src->Value(i)));
+          DF_ARROW_THROW_NOT_OK(builder.Append(static_cast<double>(src->Value(i))));
       }
       std::shared_ptr<arrow::Array> result;
-      builder.Finish(&result);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&result));
       return toChunked(result);
     }
     throw std::runtime_error("Unsupported cast");
   }
 }
+
+#undef DF_ARROW_THROW_NOT_OK

@@ -81,9 +81,13 @@ namespace dataframelib
     {
       auto schema = arrow::schema({arrow::field("_", arrow::int32())});
       arrow::Int32Builder b;
-      b.Append(0);
+      auto appendStatus = b.Append(0);
+      if (!appendStatus.ok())
+        throw std::runtime_error(appendStatus.ToString());
       std::shared_ptr<arrow::Array> arr;
-      b.Finish(&arr);
+      auto finishStatus = b.Finish(&arr);
+      if (!finishStatus.ok())
+        throw std::runtime_error(finishStatus.ToString());
       return arrow::Table::Make(schema, {std::make_shared<arrow::ChunkedArray>(arr)});
     }();
     return tbl;

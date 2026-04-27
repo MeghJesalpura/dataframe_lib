@@ -9,6 +9,14 @@
 #include "../include/dataframelib/utils/arrayUtils.h"
 #include "../include/dataframelib/utils/arrayOps.h"
 #include "../include/dataframelib/groupByObj.h"
+
+#define DF_ARROW_THROW_NOT_OK(expr)                  \
+  do                                                 \
+  {                                                  \
+    const auto _status_ = (expr);                    \
+    if (!_status_.ok())                              \
+      throw std::runtime_error(_status_.ToString()); \
+  } while (0)
 // read_csv
 namespace dataframelib
 {
@@ -56,13 +64,12 @@ namespace dataframelib
 
     auto reader = std::move(readerResult.ValueOrDie());
     // reading entire file into Arrow table
-    std::shared_ptr<arrow::Table> table;
-    auto status = reader->ReadTable(&table);
-    if (!status.ok())
+    auto tableResult = reader->ReadTable();
+    if (!tableResult.ok())
       throw std::runtime_error("Could not read Parquet: " +
-                               status.ToString());
+                               tableResult.status().ToString());
 
-    return EagerDataFrame(table);
+    return EagerDataFrame(tableResult.ValueOrDie());
   }
 
   // from_columns (map form - unordered)
@@ -563,13 +570,23 @@ namespace dataframelib
         {
           int64_t li = leftIndices[k], ri = rightIndices[k];
           if (li >= 0)
-            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          {
+            if (l->IsNull(li))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(l->Value(li)));
+          }
           else if (ri >= 0)
-            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          {
+            if (r->IsNull(ri))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(r->Value(ri)));
+          }
           else
-            b.AppendNull();
+            DF_ARROW_THROW_NOT_OK(b.AppendNull());
         }
-        b.Finish(&out);
+        DF_ARROW_THROW_NOT_OK(b.Finish(&out));
         break;
       }
       case DataType::INT64:
@@ -581,13 +598,23 @@ namespace dataframelib
         {
           int64_t li = leftIndices[k], ri = rightIndices[k];
           if (li >= 0)
-            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          {
+            if (l->IsNull(li))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(l->Value(li)));
+          }
           else if (ri >= 0)
-            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          {
+            if (r->IsNull(ri))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(r->Value(ri)));
+          }
           else
-            b.AppendNull();
+            DF_ARROW_THROW_NOT_OK(b.AppendNull());
         }
-        b.Finish(&out);
+        DF_ARROW_THROW_NOT_OK(b.Finish(&out));
         break;
       }
       case DataType::FLOAT32:
@@ -599,13 +626,23 @@ namespace dataframelib
         {
           int64_t li = leftIndices[k], ri = rightIndices[k];
           if (li >= 0)
-            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          {
+            if (l->IsNull(li))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(l->Value(li)));
+          }
           else if (ri >= 0)
-            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          {
+            if (r->IsNull(ri))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(r->Value(ri)));
+          }
           else
-            b.AppendNull();
+            DF_ARROW_THROW_NOT_OK(b.AppendNull());
         }
-        b.Finish(&out);
+        DF_ARROW_THROW_NOT_OK(b.Finish(&out));
         break;
       }
       case DataType::FLOAT64:
@@ -617,13 +654,23 @@ namespace dataframelib
         {
           int64_t li = leftIndices[k], ri = rightIndices[k];
           if (li >= 0)
-            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          {
+            if (l->IsNull(li))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(l->Value(li)));
+          }
           else if (ri >= 0)
-            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          {
+            if (r->IsNull(ri))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(r->Value(ri)));
+          }
           else
-            b.AppendNull();
+            DF_ARROW_THROW_NOT_OK(b.AppendNull());
         }
-        b.Finish(&out);
+        DF_ARROW_THROW_NOT_OK(b.Finish(&out));
         break;
       }
       case DataType::STRING:
@@ -635,13 +682,23 @@ namespace dataframelib
         {
           int64_t li = leftIndices[k], ri = rightIndices[k];
           if (li >= 0)
-            l->IsNull(li) ? b.AppendNull() : b.Append(std::string(l->Value(li)));
+          {
+            if (l->IsNull(li))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(std::string(l->Value(li))));
+          }
           else if (ri >= 0)
-            r->IsNull(ri) ? b.AppendNull() : b.Append(std::string(r->Value(ri)));
+          {
+            if (r->IsNull(ri))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(std::string(r->Value(ri))));
+          }
           else
-            b.AppendNull();
+            DF_ARROW_THROW_NOT_OK(b.AppendNull());
         }
-        b.Finish(&out);
+        DF_ARROW_THROW_NOT_OK(b.Finish(&out));
         break;
       }
       case DataType::BOOLEAN:
@@ -653,13 +710,23 @@ namespace dataframelib
         {
           int64_t li = leftIndices[k], ri = rightIndices[k];
           if (li >= 0)
-            l->IsNull(li) ? b.AppendNull() : b.Append(l->Value(li));
+          {
+            if (l->IsNull(li))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(l->Value(li)));
+          }
           else if (ri >= 0)
-            r->IsNull(ri) ? b.AppendNull() : b.Append(r->Value(ri));
+          {
+            if (r->IsNull(ri))
+              DF_ARROW_THROW_NOT_OK(b.AppendNull());
+            else
+              DF_ARROW_THROW_NOT_OK(b.Append(r->Value(ri)));
+          }
           else
-            b.AppendNull();
+            DF_ARROW_THROW_NOT_OK(b.AppendNull());
         }
-        b.Finish(&out);
+        DF_ARROW_THROW_NOT_OK(b.Finish(&out));
         break;
       }
       }
@@ -874,8 +941,8 @@ namespace dataframelib
     {
       arrow::Int64Builder b;
       for (double v : vals)
-        b.Append(static_cast<int64_t>(v));
-      b.Finish(&arr);
+        DF_ARROW_THROW_NOT_OK(b.Append(static_cast<int64_t>(v)));
+      DF_ARROW_THROW_NOT_OK(b.Finish(&arr));
       return arr;
     }
     switch (type)
@@ -884,32 +951,32 @@ namespace dataframelib
     {
       arrow::Int32Builder b;
       for (double v : vals)
-        b.Append(static_cast<int32_t>(v));
-      b.Finish(&arr);
+        DF_ARROW_THROW_NOT_OK(b.Append(static_cast<int32_t>(v)));
+      DF_ARROW_THROW_NOT_OK(b.Finish(&arr));
       return arr;
     }
     case DataType::INT64:
     {
       arrow::Int64Builder b;
       for (double v : vals)
-        b.Append(static_cast<int64_t>(v));
-      b.Finish(&arr);
+        DF_ARROW_THROW_NOT_OK(b.Append(static_cast<int64_t>(v)));
+      DF_ARROW_THROW_NOT_OK(b.Finish(&arr));
       return arr;
     }
     case DataType::FLOAT32:
     {
       arrow::FloatBuilder b;
       for (double v : vals)
-        b.Append(static_cast<float>(v));
-      b.Finish(&arr);
+        DF_ARROW_THROW_NOT_OK(b.Append(static_cast<float>(v)));
+      DF_ARROW_THROW_NOT_OK(b.Finish(&arr));
       return arr;
     }
     default:
     {
       arrow::DoubleBuilder b;
       for (double v : vals)
-        b.Append(v);
-      b.Finish(&arr);
+        DF_ARROW_THROW_NOT_OK(b.Append(v));
+      DF_ARROW_THROW_NOT_OK(b.Finish(&arr));
       return arr;
     }
     }
@@ -942,9 +1009,9 @@ namespace dataframelib
     {
       arrow::StringBuilder builder;
       for (const auto &[key, _] : groups_)
-        builder.Append(key[ki]);
+        DF_ARROW_THROW_NOT_OK(builder.Append(key[ki]));
       std::shared_ptr<arrow::Array> arr;
-      builder.Finish(&arr);
+      DF_ARROW_THROW_NOT_OK(builder.Finish(&arr));
       fields.push_back(arrow::field(groupKeys_[ki], arrow::utf8()));
       arrays.push_back(toChunked(arr));
     }
@@ -986,3 +1053,5 @@ namespace dataframelib
     return EagerDataFrame(table);
   }
 }
+
+#undef DF_ARROW_THROW_NOT_OK
